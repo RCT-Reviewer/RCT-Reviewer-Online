@@ -306,7 +306,9 @@ def export_to_csv(results):
     df = pd.DataFrame(rows)
     return df.to_csv(index=False)
 
-
+# ==========================================
+# 6. MAIN UI
+# ==========================================
 def main():
     st.set_page_config(
         page_title="RCT-Reviewer (Cloud)", 
@@ -444,7 +446,8 @@ def main():
                     try: styled_df = df.style.map(color_judgement, subset=['Judgement'])
                     except: styled_df = df.style.applymap(color_judgement, subset=['Judgement'])
                     
-                    st.dataframe(styled_df, width='stretch', hide_index=True)
+                    # FIX APPLIED: changed width='stretch' to use_container_width=True
+                    st.dataframe(styled_df, use_container_width=True, hide_index=True)
                     
                     if show_evidence:
                         st.markdown("#### 📝 Evidence Sentences")
