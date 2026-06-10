@@ -1,7 +1,7 @@
 # Author:
 #   Vihaan Sahu <pteroisvolitans12@gmail.com>
 
-# This .py file downloads models from Hugging Face hub.
+# This .py file downloads models from Hugging Face hub. (Hugging Face Hub also uses .joblib files)
 
 import os
 # MUST be set before importing huggingface_hub or any ML libs
@@ -40,12 +40,13 @@ def download_models():
         
         MODELS_DIR.mkdir(parents=True, exist_ok=True)
         
-        # FIX: max_workers=1 prevents SSL connection drops on Streamlit Cloud
         snapshot_download(
             repo_id=HF_REPO_ID,
             repo_type="model",
             local_dir=MODELS_DIR,
-            max_workers=1
+            local_dir_use_symlinks=False,
+            resume_download=True,
+            max_workers=2
         )
         msg.success(f"✅ Models downloaded successfully to: {MODELS_DIR}")
         return True
@@ -446,9 +447,8 @@ def main():
                     try: styled_df = df.style.map(color_judgement, subset=['Judgement'])
                     except: styled_df = df.style.applymap(color_judgement, subset=['Judgement'])
                     
-                    st.dataframe(styled_df, use_container_width=True, hide_index=True)
+                    st.dataframe(styled_df, width='stretch', hide_index=True)
                     
-                    # FIX: Removed nested st.expander to avoid StreamlitAPIException
                     if show_evidence:
                         st.markdown("#### 📝 Evidence Sentences")
                         for b in bias:
@@ -457,21 +457,13 @@ def main():
                             hex_color = '#%02x%02x%02x' % (int(color[0]*255), int(color[1]*255), int(color[2]*255))
                             icon = "🟢" if b.get('judgement') == 'low' else "🔴"
                             
-                            st.markdown("---")
-                            st.markdown(f"**{icon} {domain}**")
-                            
-                            ev_col1, ev_col2 = st.columns([1, 2])
-                            with ev_col1:
-                                st.markdown(f"**Judgement:** `{b.get('judgement', 'N/A')}`")
-                            with ev_col2:
+                            with st.expander(f"{icon} {domain}"):
                                 st.markdown(f"**Color:** <span style='background-color:{hex_color};padding:2px 8px;border-radius:3px;color:{'white' if sum(color) < 1.5 else 'black'}'>{hex_color}</span>", unsafe_allow_html=True)
-                            
-                            st.markdown("**Evidence:**")
-                            if b.get('text'):
-                                for i, evidence in enumerate(b['text'][:top_k_sentences], 1): 
-                                    st.markdown(f"{i}. {evidence}")
-                            else: 
-                                st.caption("_No evidence sentences found_")
+                                st.markdown(f"**Judgement:** `{b.get('judgement', 'N/A')}`")
+                                st.markdown("**Evidence:**")
+                                if b.get('text'):
+                                    for i, evidence in enumerate(b['text'][:top_k_sentences], 1): st.markdown(f"{i}. {evidence}")
+                                else: st.caption("_No evidence sentences found_")
                 
                 st.markdown("#### 📥 Download Highlighted PDFs")
                 dl_col1, dl_col2 = st.columns(2)
