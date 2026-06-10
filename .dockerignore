@@ -1,0 +1,3 @@
+robotreviewer/data/*
+.git/*
+.DS_Store
