@@ -1,20 +1,18 @@
-
 # Author:
 #   Vihaan Sahu <pteroisvolitans12@gmail.com>
 
+# This .py file downloads models from Hugging Face hub. (Hugging Face Hub also uses .joblib files)
 
-# This .py file downloads models from Huggung face hub. (Hugging Face Hub also uses .joblib files)
-
-
+import os
+os.environ["HF_HUB_DOWNLOAD_TIMEOUT"] = "300"
+os.environ["HF_HUB_ETAG_TIMEOUT"] = "60"
 
 import sys
-import os
 from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
 
 import streamlit as st
 import logging
-
 
 HF_REPO_ID = "Aurumz/RCT-Reviewer"  
 MODELS_DIR = Path.home() / ".cache" / "rct_reviewer" / "models"
@@ -22,18 +20,16 @@ MODELS_DIR = Path.home() / ".cache" / "rct_reviewer" / "models"
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 log = logging.getLogger(__name__)
 
-
 def download_models():
     """
     Checks if models exist in the cache directory. 
     If not, downloads them from Hugging Face Hub.
     """
-
     check_file = MODELS_DIR / "pico" / "P_model.npz"
     
     if check_file.exists():
         log.info("Models already exist in cache.")
-        return
+        return True
 
     msg = st.empty()
     msg.info("⬇️ Models not found locally. Downloading from Hugging Face Hub (One-time setup)...")
@@ -47,26 +43,26 @@ def download_models():
             repo_id=HF_REPO_ID,
             repo_type="model",
             local_dir=MODELS_DIR,
-            local_dir_use_symlinks=False
+            local_dir_use_symlinks=False,
+            resume_download=True,
+            max_workers=2
         )
         msg.success(f"✅ Models downloaded successfully to: {MODELS_DIR}")
+        return True
         
     except ImportError:
         msg.error("❌ `huggingface_hub` library not found. Please add it to requirements.txt.")
-        st.stop()
+        return False
     except Exception as e:
         msg.error(f"❌ Failed to download models: {e}")
-        st.stop()
+        return False
 
-
-
+# Configure rct_reviewer to use the downloaded models
 import rct_reviewer
 rct_reviewer.DATA_ROOT = MODELS_DIR
 
-
 from rct_reviewer.config import settings
 settings.use_joblib = True 
-
 
 import fitz  
 import time
@@ -79,8 +75,6 @@ from rct_reviewer.core.models import DocumentAnalysis
 from rct_reviewer.ml.rct_robot import RCTRobot
 from rct_reviewer.ml.pico_robot import PICORobot
 from rct_reviewer.ml.bias_robot import BiasRobot
-
-
 
 @st.cache_resource
 def load_models():
@@ -312,9 +306,7 @@ def export_to_csv(results):
     df = pd.DataFrame(rows)
     return df.to_csv(index=False)
 
-# ==========================================
-# 6. MAIN UI
-# ==========================================
+
 def main():
     st.set_page_config(
         page_title="RCT-Reviewer (Cloud)", 
@@ -323,8 +315,18 @@ def main():
         initial_sidebar_state="expanded"
     )
     
-    # Run download check immediately
-    download_models()
+    # Lazy Load Logic: Check download status inside main
+    if "models_ready" not in st.session_state:
+        st.session_state.models_ready = False
+
+    if not st.session_state.models_ready:
+        with st.spinner("Checking / downloading models..."):
+            success = download_models()
+            if success:
+                st.session_state.models_ready = True
+            else:
+                st.error("Model download failed. Please check logs.")
+                st.stop() 
     
     st.title("RCT-Reviewer (Cloud Version)")
     st.markdown(f"""
