@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "RCT-Reviewer"
+version: "1.0"
+type: software
+
+authors:
+
+* family-names: "Sahu"
+  given-names: "Vihaan"
+
+doi: "10.5281/zenodo.20618338"
+date-released: 2026-06-10
+
+repository-code: "https://github.com/aurumz-rgb/RCT-Reviewer"
+
+preferred-citation:
+type: software
+authors:
+- family-names: "Sahu"
+given-names: "Vihaan"
+title: "RCT-Reviewer: A Modernized, Standalone Tool for Automated Analysis of Clinical Trials (RCTs)"
+year: 2026
+publisher: "Zenodo"
+doi: "10.5281/zenodo.20618338"
+url: "https://doi.org/10.5281/zenodo.20618338"
