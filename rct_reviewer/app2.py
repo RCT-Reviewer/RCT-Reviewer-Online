@@ -1,9 +1,10 @@
 # Author:
 #   Vihaan Sahu <pteroisvolitans12@gmail.com>
 
-# This .py file downloads models from Hugging Face hub. (Hugging Face Hub also uses .joblib files)
+# This .py file downloads models from Hugging Face hub.
 
 import os
+# MUST be set before importing huggingface_hub or any ML libs
 os.environ["HF_HUB_DOWNLOAD_TIMEOUT"] = "300"
 os.environ["HF_HUB_ETAG_TIMEOUT"] = "60"
 
@@ -39,13 +40,12 @@ def download_models():
         
         MODELS_DIR.mkdir(parents=True, exist_ok=True)
         
+        # FIX: max_workers=1 is crucial for stability on Streamlit Cloud to avoid SSL drops
         snapshot_download(
             repo_id=HF_REPO_ID,
             repo_type="model",
             local_dir=MODELS_DIR,
-            local_dir_use_symlinks=False,
-            resume_download=True,
-            max_workers=2
+            max_workers=1
         )
         msg.success(f"✅ Models downloaded successfully to: {MODELS_DIR}")
         return True
@@ -446,7 +446,6 @@ def main():
                     try: styled_df = df.style.map(color_judgement, subset=['Judgement'])
                     except: styled_df = df.style.applymap(color_judgement, subset=['Judgement'])
                     
-                    # FIX APPLIED: changed width='stretch' to use_container_width=True
                     st.dataframe(styled_df, use_container_width=True, hide_index=True)
                     
                     if show_evidence:
