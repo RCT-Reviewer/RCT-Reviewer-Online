@@ -2,20 +2,22 @@
 # RCT-Reviewer 
 
 
-streamlit>=1.35.0
-pymupdf>=1.24.0
-spacy>=3.7.0
-numpy>=1.26.0
-scipy>=1.13.0
-scikit-learn>=1.5.0
-pandas>=2.2.0
-pydantic>=2.7.0
-pydantic_settings
-networkx
-huggingface_hub
+streamlit==1.35.0
+pymupdf==1.24.9
+
+numpy==1.26.4
+scipy==1.13.1
+pandas==2.2.2
+
+spacy==3.7.5
+thinc==8.2.5
+
+scikit-learn==1.5.1
+
+pydantic==2.7.4
+pydantic_settings==2.3.4
+
+networkx==3.3
+huggingface_hub==0.23.5
 
 en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl
-
-# TensorFlow is optional for Python 3.13.
-# If installation fails, the app will automatically use SVM-only mode for RCT.
-#tensorflow>=2.16.0
