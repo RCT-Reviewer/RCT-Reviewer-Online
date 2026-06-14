@@ -1,8 +1,4 @@
-# RCT-Reviewer-Online
-
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://rct-reviewer.streamlit.app)
-![Python](https://img.shields.io/badge/python-3.12-blue)
-![License](https://img.shields.io/badge/license-GPL%20v3.0-blue)
+![banner](assets/banner_transparent.png)
 
 **RCT-Reviewer-Online** is the deployment repository for the live [RCT-Reviewer Web Application](https://rct-reviewer.streamlit.app). 
 
