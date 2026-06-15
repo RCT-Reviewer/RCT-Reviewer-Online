@@ -15,11 +15,11 @@ sys.path.append(str(Path(__file__).parent.parent))
 import streamlit as st
 import logging
 import base64
-import streamlit.components.v1 as components
 import pandas as pd
 import fitz
 import io
 import numpy as np
+import re
 from datetime import datetime
 
 
@@ -104,7 +104,7 @@ def download_models():
         return True
 
     msg = st.empty()
-    msg.info("⬇️ Models not found locally. Downloading from Hugging Face Hub (One-time setup)...")
+    msg.info(" Models not found locally. Downloading from Hugging Face Hub (One-time setup)...")
 
     from huggingface_hub import snapshot_download
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
@@ -120,11 +120,11 @@ def download_models():
                 local_dir=MODELS_DIR,
                 max_workers=1
             )
-            msg.success(f"✅ Models downloaded successfully to: {MODELS_DIR}")
+            msg.success(f"Models downloaded successfully to: {MODELS_DIR}! Please do not clear this Streamlit's cache.")
             return True
 
         except ImportError:
-            msg.error("❌ `huggingface_hub` library not found. Please add it to requirements.txt.")
+            msg.error(" `huggingface_hub` library not found. Please add it to requirements.txt.")
             return False
         except Exception as e:
             retry_count += 1
@@ -132,7 +132,7 @@ def download_models():
                 msg.warning(f"⚠️ Download attempt {retry_count} failed: {str(e)[:100]}... Retrying in 5s...")
                 time.sleep(5)
             else:
-                msg.error(f"❌ Failed to download models after {max_retries} attempts: {e}")
+                msg.error(f" Failed to download models after {max_retries} attempts: {e}")
                 return False
 
 
@@ -164,9 +164,15 @@ def get_parser():
 
 
 PICO_COLORS = {
-    "Population": (1.0, 0.84, 0.0),
-    "Intervention": (1.0, 0.6, 0.2),
-    "Outcomes": (1.0, 0.5, 0.31),
+    "Population": (1.0, 0.76, 0.03),
+    "Intervention": (1.0, 0.88, 0.0),
+    "Outcomes": (0.93, 0.65, 0.0),
+}
+
+PICO_LETTERS = {
+    "Population": "P",
+    "Intervention": "I",
+    "Outcomes": "O",
 }
 
 BIAS_COLORS = {
@@ -178,109 +184,306 @@ BIAS_COLORS = {
     "Selective reporting": (0.5, 0.0, 0.0),
 }
 
+BIAS_LETTERS = {
+    "Random sequence generation": "R",
+    "Allocation concealment": "A",
+    "Blinding of participants and personnel": "B",
+    "Blinding of outcome assessment": "O",
+    "Incomplete outcome data": "I",
+    "Selective reporting": "S",
+}
+
+
+def _normalize_text(t):
+    """Normalize text for PDF search: whitespace, ligatures, dashes, quotes."""
+    t = ' '.join(t.split())
+    t = t.replace('\ufb01', 'fi').replace('\ufb02', 'fl').replace('\ufb00', 'ff').replace('\ufb03', 'ffi').replace('\ufb04', 'ffl')
+    t = t.replace('\u2010', '-').replace('\u2011', '-').replace('\u2012', '-').replace('\u2013', '-').replace('\u2014', '-')
+    t = t.replace('\u2032', "'").replace('\u2019', "'")
+    t = t.replace('\u2033', '"').replace('\u201c', '"').replace('\u201d', '"')
+    return t
+
+
+def _expand_to_lines(page, small_rect, header_height):
+    """Expand a small match rect to cover all lines of the containing paragraph/block."""
+    try:
+        td = page.get_text("dict")
+        matched_lines = []
+
+        for block in td["blocks"]:
+            if block["type"] != 0:
+                continue
+            for line in block["lines"]:
+                line_rect = fitz.Rect(line["bbox"])
+                if line_rect.y0 < header_height:
+                    continue
+                if not (small_rect.y1 < line_rect.y0 - 3 or small_rect.y0 > line_rect.y1 + 3):
+                    if not (small_rect.x1 < line_rect.x0 - 100 or small_rect.x0 > line_rect.x1 + 100):
+                        matched_lines.append(line_rect)
+
+        if matched_lines:
+            x0 = min(l.x0 for l in matched_lines)
+            y0 = min(l.y0 for l in matched_lines)
+            x1 = max(l.x1 for l in matched_lines)
+            y1 = max(l.y1 for l in matched_lines)
+            return fitz.Rect(x0, y0, x1, y1)
+    except Exception as e:
+        log.debug(f"expand_to_lines failed: {e}")
+
+    return small_rect
+
+
+def find_text_areas(page, text, header_height=0):
+    """Robust multi-strategy text search that ensures full paragraph/line coverage."""
+    if not text or not text.strip():
+        return []
+
+    def filter_header(areas):
+        return [a for a in areas if a.y0 >= header_height]
+
+
+    areas = filter_header(page.search_for(text))
+    if areas:
+        return areas
+
+    normalized = _normalize_text(text)
+
+    
+    areas = filter_header(page.search_for(normalized))
+    if areas:
+        return areas
+
+
+    portion_len = 25
+    if len(normalized) > portion_len * 2:
+        first_part = normalized[:portion_len]
+        last_part = normalized[-portion_len:]
+
+        first_areas = filter_header(page.search_for(first_part))
+        last_areas = filter_header(page.search_for(last_part))
+
+        if first_areas and last_areas:
+            for fa in first_areas:
+                fa_exp = _expand_to_lines(page, fa, header_height)
+                for la in last_areas:
+                    la_exp = _expand_to_lines(page, la, header_height)
+                    if abs(fa_exp.y0 - la_exp.y0) < 100:
+                        expanded = fitz.Rect(
+                            min(fa_exp.x0, la_exp.x0),
+                            min(fa_exp.y0, la_exp.y0),
+                            max(fa_exp.x1, la_exp.x1),
+                            max(fa_exp.y1, la_exp.y1)
+                        )
+                        return [expanded]
+
+
+    for length in [35, 30, 25, 20, 15]:
+        if len(normalized) >= length:
+            substr = normalized[:length]
+            areas = filter_header(page.search_for(substr))
+            if areas:
+                return [_expand_to_lines(page, a, header_height) for a in areas]
+
+  
+    sentences = re.split(r'(?<=[.!?])\s+', normalized)
+    for sent in sentences:
+        sent = sent.strip()
+        if len(sent) >= 15:
+            areas = filter_header(page.search_for(sent))
+            if areas:
+                return [_expand_to_lines(page, a, header_height) for a in areas]
+
+
+    if len(normalized) > 60:
+        mid = len(normalized) // 4
+        for length in [35, 30, 25, 20]:
+            if mid + length <= len(normalized):
+                substr = normalized[mid:mid + length]
+                areas = filter_header(page.search_for(substr))
+                if areas:
+                    return [_expand_to_lines(page, a, header_height) for a in areas]
+
+
+    if len(normalized) > 60:
+        for length in [35, 30, 25, 20]:
+            substr = normalized[-length:]
+            areas = filter_header(page.search_for(substr))
+            if areas:
+                return [_expand_to_lines(page, a, header_height) for a in areas]
+
+  
+    if len(normalized) > 20:
+        for i in range(0, len(normalized) - 20, 8):
+            window = normalized[i:i + 20]
+            areas = filter_header(page.search_for(window))
+            if areas:
+                return [_expand_to_lines(page, a, header_height) for a in areas]
+
+    return []
+
+
+def _find_next_non_overlapping_x(placed_rects, base_x, base_y, box_w, box_h):
+    """Find the next available X coordinate so superscripts don't overlap."""
+    test_rect = fitz.Rect(base_x - 1, base_y - box_h, base_x + box_w, base_y)
+    
+    if not any(test_rect.intersects(r) for r in placed_rects):
+        return base_x
+        
+
+    for offset in range(5, 500, 5):
+        new_x = base_x + offset
+        test_rect = fitz.Rect(new_x - 1, base_y - box_h, new_x + box_w, base_y)
+        if not any(test_rect.intersects(r) for r in placed_rects):
+            return new_x
+            
+    return base_x 
+
+
+def render_evidence_item(number, text):
+    """Render a single evidence item, detecting and formatting tables."""
+    lines = text.strip().split('\n')
+    non_empty_lines = [l for l in lines if l.strip()]
+
+    is_pipe_table = len(non_empty_lines) >= 2 and all('|' in line for line in non_empty_lines)
+    is_tab_table = len(non_empty_lines) >= 2 and all('\t' in line for line in non_empty_lines)
+
+    if is_pipe_table or is_tab_table:
+        st.markdown(f"**{number}.**")
+        if is_tab_table:
+            md_lines = []
+            for i, line in enumerate(non_empty_lines):
+                cells = [c.strip() for c in line.split('\t')]
+                md_lines.append('| ' + ' | '.join(cells) + ' |')
+                if i == 0:
+                    md_lines.append('| ' + ' | '.join(['---'] * len(cells)) + ' |')
+            st.markdown('\n'.join(md_lines))
+        else:
+            st.markdown(text)
+    else:
+        st.info(f"{number}. {text}")
+
+
+def _apply_highlight_and_get_anchor(page, text, header_height, highlight_color):
+    """Applies highlight using quads for perfect multi-line tracing, fallback to rects.
+    Returns the top-left anchor point (sup_x, sup_y) for the superscript."""
+    normalized = _normalize_text(text)
+    
+   
+    quads = page.search_for(normalized, quads=True)
+    if quads:
+       
+        valid_quads = [q for q in quads if q[0].y >= header_height]
+        if valid_quads:
+            annot = page.add_highlight_annot(valid_quads)
+            annot.set_colors(stroke=highlight_color, fill=highlight_color)
+            annot.update()
+        
+            return valid_quads[0][0].x, valid_quads[0][0].y
+
+
+    areas = find_text_areas(page, text, header_height)
+    if areas:
+        for area in areas:
+            annot = page.add_highlight_annot(area)
+            annot.set_colors(stroke=highlight_color, fill=highlight_color)
+            annot.update()
+        return areas[0].x0, areas[0].y0
+
+    return None, None
+
 
 def create_bias_highlighted_pdf(pdf_bytes, annotations):
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    style_map = {
-        "Random sequence generation": "highlight",
-        "Allocation concealment": "underline",
-        "Blinding of participants and personnel": "squiggly",
-        "Blinding of outcome assessment": "manual_bg",
-        "Incomplete outcome data": "manual_outline",
-        "Selective reporting": "manual_thick_line",
-    }
+    highlight_color = (1.0, 0.9, 0.9)
+
+    bias_legend_items = [
+        ("R", "Random Seq", BIAS_COLORS["Random sequence generation"]),
+        ("A", "Allocation", BIAS_COLORS["Allocation concealment"]),
+        ("B", "Blind-Part", BIAS_COLORS["Blinding of participants and personnel"]),
+        ("O", "Blind-Outcome", BIAS_COLORS["Blinding of outcome assessment"]),
+        ("I", "Incomplete", BIAS_COLORS["Incomplete outcome data"]),
+        ("S", "Selective Rep", BIAS_COLORS["Selective reporting"]),
+    ]
 
     for page_num, page in enumerate(doc):
         rect = page.rect
-        header_height = 95
+        header_height = 90
         header_rect = fitz.Rect(0, 0, rect.width, header_height)
         page.draw_rect(header_rect, color=(1, 1, 1), fill=(1, 1, 1))
 
-        page.insert_text(fitz.Point(10, 15), f"Generated by RCT-Reviewer (Cloud) on {current_date}", fontsize=10, color=(0.2, 0.2, 0.2), fontname="helv")
+        page.insert_text(fitz.Point(10, 15), f"Generated by RCT-Reviewer on {current_date}", fontsize=10, color=(0.2, 0.2, 0.2), fontname="helv")
         page.draw_line(fitz.Point(0, 22), fitz.Point(rect.width, 22), color=(0.8, 0.8, 0.8), width=1)
-        page.insert_text(fitz.Point(10, 38), "BIAS HIGHLIGHTS (Distinct Styles):", fontsize=8, color=(0.3, 0.3, 0.3), fontname="helv")
-
-        bias_legend = [
-            ("1. Random Seq", (1.0, 0.6, 0.6), "highlight"), ("2. Allocation", (1.0, 0.3, 0.3), "underline"),
-            ("3. Blind-Part", (0.86, 0.08, 0.24), "squiggly"), ("4. Blind-Outcome", (0.8, 0.4, 0.0), "manual_bg"),
-            ("5. Incomplete", (0.8, 0.2, 0.2), "manual_outline"), ("6. Selective Rep", (0.5, 0.0, 0.0), "manual_thick_line"),
-        ]
+        page.insert_text(fitz.Point(10, 38), "Risk of Bias LEGEND:", fontsize=9,  color=(0.3, 0.3, 0.3), fontname="hebo")
 
         legend_x = 10
-        legend_y = 52
-        for label, color, style in bias_legend[:3]:
-            if style == "highlight":
-                box_rect = fitz.Rect(legend_x, legend_y - 6, legend_x + 15, legend_y + 6)
-                page.draw_rect(box_rect, color=color, fill=color)
-            elif style == "underline":
-                page.draw_line(fitz.Point(legend_x, legend_y + 4), fitz.Point(legend_x + 15, legend_y + 4), color=color, width=2)
-            elif style == "squiggly":
-                page.draw_line(fitz.Point(legend_x, legend_y + 4), fitz.Point(legend_x + 15, legend_y + 4), color=color, width=1)
-                page.draw_line(fitz.Point(legend_x, legend_y + 2), fitz.Point(legend_x + 15, legend_y + 2), color=color, width=1)
-            page.insert_text(fitz.Point(legend_x + 20, legend_y + 3), label, fontsize=6, color=(0.2, 0.2, 0.2), fontname="helv")
+        legend_y = 55
+  
+        hl_box = fitz.Rect(legend_x, legend_y - 7, legend_x + 16, legend_y + 7)
+        page.draw_rect(hl_box, color=highlight_color, fill=highlight_color, width=0)
+        page.insert_text(fitz.Point(legend_x + 20, legend_y + 3), "Text Highlight", fontsize=7, color=(0.2, 0.2, 0.2), fontname="helv")
+        legend_x += 130
+
+        for letter, label, color in bias_legend_items[:2]:
+            box_rect = fitz.Rect(legend_x, legend_y - 7, legend_x + 16, legend_y + 7)
+            page.draw_rect(box_rect, color=color, fill=color, width=0)
+            page.insert_text(fitz.Point(legend_x + 4, legend_y + 3), letter, fontsize=8, color=(0, 0, 0), fontname="helv")
+            page.insert_text(fitz.Point(legend_x + 20, legend_y + 3), label, fontsize=7, color=(0.2, 0.2, 0.2), fontname="helv")
             legend_x += 130
 
         legend_x = 10
-        legend_y = 70
-        for label, color, style in bias_legend[3:]:
-            if style == "manual_bg":
-                box_rect = fitz.Rect(legend_x, legend_y - 6, legend_x + 15, legend_y + 6)
-                page.draw_rect(box_rect, color=color, fill=color)
-            elif style == "manual_outline":
-                box_rect = fitz.Rect(legend_x, legend_y - 6, legend_x + 15, legend_y + 6)
-                page.draw_rect(box_rect, color=color, width=2)
-            elif style == "manual_thick_line":
-                page.draw_line(fitz.Point(legend_x, legend_y + 4), fitz.Point(legend_x + 15, legend_y + 4), color=color, width=3)
-            page.insert_text(fitz.Point(legend_x + 20, legend_y + 3), label, fontsize=6, color=(0.2, 0.2, 0.2), fontname="helv")
+        legend_y = 75
+        for letter, label, color in bias_legend_items[2:5]:
+            box_rect = fitz.Rect(legend_x, legend_y - 7, legend_x + 16, legend_y + 7)
+            page.draw_rect(box_rect, color=color, fill=color, width=0)
+            page.insert_text(fitz.Point(legend_x + 4, legend_y + 3), letter, fontsize=8, color=(0, 0, 0), fontname="helv")
+            page.insert_text(fitz.Point(legend_x + 20, legend_y + 3), label, fontsize=7, color=(0.2, 0.2, 0.2), fontname="helv")
             legend_x += 130
+            
+        for letter, label, color in bias_legend_items[5:]:
+            box_rect = fitz.Rect(legend_x, legend_y - 7, legend_x + 16, legend_y + 7)
+            page.draw_rect(box_rect, color=color, fill=color, width=0)
+            page.insert_text(fitz.Point(legend_x + 4, legend_y + 3), letter, fontsize=8, color=(0, 0, 0), fontname="helv")
+            page.insert_text(fitz.Point(legend_x + 20, legend_y + 3), label, fontsize=7, color=(0.2, 0.2, 0.2), fontname="helv")
+            legend_x += 150
 
         page.draw_line(fitz.Point(0, header_height - 2), fitz.Point(rect.width, header_height - 2), color=(0.6, 0.6, 0.6), width=1.5)
 
+        legend_dest_point = fitz.Point(rect.width / 2, (55 + 75) / 2)
+
         bias_annotations = [a for a in annotations if a.get("type") == "bias"]
+        placed_superscripts = [] 
 
         for ann in bias_annotations:
             text = ann.get("text", "")
             bias_domain = ann.get("bias_domain", "")
-            if not text or len(text) < 10 or not bias_domain:
+            if not text or not bias_domain:
                 continue
 
             color = BIAS_COLORS.get(bias_domain, (1.0, 0.3, 0.3))
-            style = style_map.get(bias_domain, "highlight")
+            letter = BIAS_LETTERS.get(bias_domain, "?")
 
             try:
-                areas = page.search_for(text)
-                for area in areas:
-                    if area.y0 < header_height:
-                        continue
+                sup_x, sup_y = _apply_highlight_and_get_anchor(page, text, header_height, highlight_color)
+                
+                if sup_x is not None and sup_y is not None:
+                    
+                    box_w = 12
+                    box_h = 12
+                    final_x = _find_next_non_overlapping_x(placed_superscripts, sup_x, sup_y, box_w, box_h)
+                    box_rect = fitz.Rect(final_x - 1, sup_y - box_h, final_x + box_w, sup_y)
+                    
+                    page.draw_rect(box_rect, color=None, fill=color, width=0) 
+                    page.insert_text(fitz.Point(final_x + 2, sup_y - 2), letter, fontsize=10, color=(0, 0, 0), fontname="helv") # Black Text
+                    
+                    placed_superscripts.append(box_rect)
 
-                    if style == "highlight":
-                        highlight = page.add_highlight_annot(area)
-                        highlight.set_colors(stroke=color)
-                        highlight.update()
-                    elif style == "underline":
-                        ul = page.add_underline_annot(area)
-                        ul.set_colors(stroke=color)
-                        ul.update()
-                    elif style == "squiggly":
-                        sq = page.add_squiggly_annot(area)
-                        sq.set_colors(stroke=color)
-                        sq.update()
-                    elif style == "manual_bg":
-                        bg_rect = fitz.Rect(area.x0 - 2, area.y0 - 1, area.x1 + 2, area.y1 + 1)
-                        shape = page.new_shape()
-                        shape.draw_rect(bg_rect)
-                        shape.finish(color=color, fill=color, fill_opacity=0.3, overlay=False)
-                        shape.commit()
-                    elif style == "manual_outline":
-                        out_rect = fitz.Rect(area.x0 - 1, area.y0 - 1, area.x1 + 1, area.y1 + 1)
-                        page.draw_rect(out_rect, color=color, width=1.5)
-                    elif style == "manual_thick_line":
-                        line_y = area.y1 - 1
-                        page.draw_line(fitz.Point(area.x0, line_y), fitz.Point(area.x1, line_y), color=color, width=3)
+                    link_dict = {"kind": 1, "page": page_num, "to": legend_dest_point, "zoom": 0}
+                    link_annot = page.add_link_annot(box_rect, link_dict)
+                    link_annot.update()
             except Exception as e:
-                log.debug(f"Could not annotate text: {e}")
+                log.debug(f"Could not annotate bias text: {e}")
 
     buf = io.BytesIO()
     doc.save(buf)
@@ -291,8 +494,8 @@ def create_bias_highlighted_pdf(pdf_bytes, annotations):
 def create_pico_highlighted_pdf(pdf_bytes, annotations):
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
-
-    style_map = {"Population": "highlight", "Intervention": "underline", "Outcomes": "squiggly"}
+  
+    highlight_color = (1.0, 1.0, 0.6) 
 
     for page_num, page in enumerate(doc):
         rect = page.rect
@@ -300,62 +503,70 @@ def create_pico_highlighted_pdf(pdf_bytes, annotations):
         header_rect = fitz.Rect(0, 0, rect.width, header_height)
         page.draw_rect(header_rect, color=(1, 1, 1), fill=(1, 1, 1))
 
-        page.insert_text(fitz.Point(10, 15), f"Generated by RCT-Reviewer (Cloud) on {current_date}", fontsize=10, color=(0.2, 0.2, 0.2), fontname="helv")
+        page.insert_text(fitz.Point(10, 15), f"Generated by RCT-Reviewer on {current_date}", fontsize=10, color=(0.2, 0.2, 0.2), fontname="helv")
         page.draw_line(fitz.Point(0, 22), fitz.Point(rect.width, 22), color=(0.8, 0.8, 0.8), width=1)
-        page.insert_text(fitz.Point(10, 40), "PICO HIGHLIGHTS (Distinct Styles):", fontsize=8, color=(0.3, 0.3, 0.3), fontname="helv")
 
-        pico_legend = [
-            ("Population (Highlight)", (1.0, 0.84, 0.0), "highlight"),
-            ("Intervention (Underline)", (1.0, 0.6, 0.2), "underline"),
-            ("Outcomes (Squiggly)", (1.0, 0.5, 0.31), "squiggly"),
+        page.insert_text(fitz.Point(10, 38), "PICO LEGEND:", fontsize=9, color=(0.3, 0.3, 0.3), fontname="hebo")
+
+        pico_legend_items = [
+            ("P", "Population", (1.0, 0.76, 0.03)),
+            ("I", "Intervention", (1.0, 0.88, 0.0)),
+            ("O", "Outcomes", (0.93, 0.65, 0.0)),
         ]
 
         legend_x = 10
         legend_y = 55
-        for label, color, style in pico_legend:
-            if style == "highlight":
-                box_rect = fitz.Rect(legend_x, legend_y - 6, legend_x + 20, legend_y + 6)
-                page.draw_rect(box_rect, color=color, fill=color)
-            elif style == "underline":
-                page.draw_line(fitz.Point(legend_x, legend_y + 4), fitz.Point(legend_x + 20, legend_y + 4), color=color, width=2)
-            elif style == "squiggly":
-                page.draw_line(fitz.Point(legend_x, legend_y + 4), fitz.Point(legend_x + 20, legend_y + 4), color=color, width=1)
-                page.draw_line(fitz.Point(legend_x, legend_y + 2), fitz.Point(legend_x + 20, legend_y + 2), color=color, width=1)
-            page.insert_text(fitz.Point(legend_x + 25, legend_y + 3), label, fontsize=7, color=(0.2, 0.2, 0.2), fontname="helv")
-            legend_x += 150
+
+    
+        hl_box = fitz.Rect(legend_x, legend_y - 8, legend_x + 18, legend_y + 8)
+        page.draw_rect(hl_box, color=highlight_color, fill=highlight_color, width=0)
+        page.insert_text(fitz.Point(legend_x + 22, legend_y + 4), "Text Highlight", fontsize=7, color=(0.2, 0.2, 0.2), fontname="helv")
+        legend_x += 130
+
+        for letter, label, color in pico_legend_items:
+            box_rect = fitz.Rect(legend_x, legend_y - 8, legend_x + 18, legend_y + 8)
+            page.draw_rect(box_rect, color=color, fill=color, width=0)
+            page.insert_text(fitz.Point(legend_x + 5, legend_y + 4), letter, fontsize=10, color=(0, 0, 0), fontname="helv")
+            page.insert_text(fitz.Point(legend_x + 22, legend_y + 3), label, fontsize=7, color=(0.2, 0.2, 0.2), fontname="helv")
+            legend_x += 130
 
         page.draw_line(fitz.Point(0, header_height - 2), fitz.Point(rect.width, header_height - 2), color=(0.6, 0.6, 0.6), width=1.5)
 
+        legend_dest_point = fitz.Point(rect.width / 2, legend_y)
+
         pico_annotations = [a for a in annotations if a.get("type") in ["Population", "Intervention", "Outcomes"]]
+        placed_superscripts = [] 
 
         for ann in pico_annotations:
             text = ann.get("text", "")
             ann_type = ann.get("type", "")
-            if not text or len(text) < 10:
+            if not text:
                 continue
 
-            color = PICO_COLORS.get(ann_type, (1.0, 0.84, 0.0))
-            style = style_map.get(ann_type, "highlight")
+            color = PICO_COLORS.get(ann_type, (1.0, 0.76, 0.03))
+            letter = PICO_LETTERS.get(ann_type, "P")
 
             try:
-                areas = page.search_for(text)
-                for area in areas:
-                    if area.y0 < header_height:
-                        continue
-                    if style == "highlight":
-                        highlight = page.add_highlight_annot(area)
-                        highlight.set_colors(stroke=color)
-                        highlight.update()
-                    elif style == "underline":
-                        ul = page.add_underline_annot(area)
-                        ul.set_colors(stroke=color)
-                        ul.update()
-                    elif style == "squiggly":
-                        sq = page.add_squiggly_annot(area)
-                        sq.set_colors(stroke=color)
-                        sq.update()
+                sup_x, sup_y = _apply_highlight_and_get_anchor(page, text, header_height, highlight_color)
+                
+                if sup_x is not None and sup_y is not None:
+           
+                    box_w = 12
+                    box_h = 12
+                    final_x = _find_next_non_overlapping_x(placed_superscripts, sup_x, sup_y, box_w, box_h)
+                    box_rect = fitz.Rect(final_x - 1, sup_y - box_h, final_x + box_w, sup_y)
+                    
+                    page.draw_rect(box_rect, color=None, fill=color, width=0) 
+                    page.insert_text(fitz.Point(final_x + 2, sup_y - 2), letter, fontsize=10, color=(0, 0, 0), fontname="helv") # Black Text
+                    
+                    placed_superscripts.append(box_rect)
+
+                    link_dict = {"kind": 1, "page": page_num, "to": legend_dest_point, "zoom": 0}
+                    link_annot = page.add_link_annot(box_rect, link_dict)
+                    link_annot.update()
+
             except Exception as e:
-                log.debug(f"Could not annotate text: {e}")
+                log.debug(f"Could not annotate PICO text: {e}")
 
     buf = io.BytesIO()
     doc.save(buf)
@@ -397,7 +608,7 @@ def js_escape(text):
 def main():
     col1, col2, col3 = st.columns([1, 3, 1])
     with col2:
-        st.image("assets/banner.svg", use_container_width=True)
+        st.image("assets/banner.svg", width=730)
 
     st.markdown("---")
 
@@ -428,9 +639,9 @@ def main():
         | **Data Models** | MultiDict | Pydantic |
         | **ML Core** | SVM / CNN | Same Weights (SVM prioritized) |
         | **Underlying ML Research** | Original ML models trained on 12,808 RCT PDFs | Preserves the same trained ML models and weights |
-        | **Risk of Bias Accuracy** | ~71.0% agreement accuracy vs expert consensus | Same expected predictive accuracy because the same SVM weights are used |
-        | **Supporting Text Precision** | ~87% precision for rationale extraction | Same extraction models retained |
-        | **Supporting Text Recall** | ~90% recall | Same extraction models retained |
+        | **Risk of Bias Accuracy** | ~71.0% agreement accuracy vs expert consensus | ~71.0% agreement accuracy vs expert consensus (Same SVM weights) |
+        | **Supporting Text Precision** | ~87% precision for rationale extraction | ~87% precision for rationale extraction (Same extraction models) |
+        | **Supporting Text Recall** | ~90% recall | ~90% recall (Same extraction models) |
         | **Model Storage** | Pickle / HDF5 / NPZ | Joblib / NPZ / legacy compatibility modes |
         | **Expected Accuracy Difference After CNN Removal** | Baseline reference | Estimated negligible reduction (~0–2%) |
         | **Interface** | Flask + React | Streamlit (Pure Python) |
@@ -459,12 +670,6 @@ def main():
     st.markdown("---")
     st.markdown("## Analysis Tool")
 
-    with st.expander("⚙️ Settings"):
-        show_evidence = st.checkbox("Show Evidence Sentences", value=True)
-        top_k_sentences = st.slider("Evidence Sentences per Domain", 1, 5, 3)
-
-    st.info(f"**Running in Cloud Mode:** Models are loaded from Hugging Face Hub.\nCache location: `{MODELS_DIR}`")
-
     uploaded_files = st.file_uploader("Upload Clinical Trial PDF", type="pdf", accept_multiple_files=True)
 
     if uploaded_files:
@@ -473,23 +678,37 @@ def main():
 
         if st.button("Analyze Document", type="primary"):
             results = []
-            progress = st.progress(0)
+            progress = st.progress(0, text="Initializing...")
             status = st.empty()
 
             file_to_process = uploaded_files[0]
-            
+
             status.markdown(f"**Processing: {file_to_process.name}**")
+            progress.progress(0.1, text="Reading PDF...")
             try:
                 pdf_bytes = file_to_process.getvalue()
                 parsed_data = parser.parse(pdf_bytes)
 
+                progress.progress(0.3, text="PDF parsed. Checking content...")
+
                 if not parsed_data['sentences']:
                     st.error(f"Could not extract text from {file_to_process.name}")
+                    progress.progress(1.0, text="Failed - no text extracted")
+                    status.markdown(" Analysis failed: could not extract text.")
                 else:
-                    with st.spinner("Running ML analysis..."):
-                        rct_res = models['rct'].predict(parsed_data['title'], parsed_data['abstract'])
-                        pico_res = models['pico'].annotate(parsed_data['sentences'])
-                        bias_res = models['bias'].annotate(parsed_data['sentences'], parsed_data['text'])
+                    progress.progress(0.4, text="Running RCT classification...")
+                    status.markdown(f"**Running ML analysis on {file_to_process.name}...**")
+
+                    rct_res = models['rct'].predict(parsed_data['title'], parsed_data['abstract'])
+
+                    progress.progress(0.6, text="Running PICO extraction...")
+                    pico_res = models['pico'].annotate(parsed_data['sentences'])
+
+                    progress.progress(0.8, text="Running Risk of Bias assessment...")
+                    bias_res = models['bias'].annotate(parsed_data['sentences'], parsed_data['text'])
+
+                    progress.progress(1.0)
+                    status.markdown(" Analysis complete!")
 
                     result = {
                         "filename": file_to_process.name, "pdf_bytes": pdf_bytes,
@@ -497,30 +716,14 @@ def main():
                     }
                     results.append(result)
             except Exception as e:
+                progress.progress(1.0, text="Failed with error")
+                status.markdown(f"❌ Analysis failed: {str(e)}")
                 st.error(f"Error processing {file_to_process.name}: {str(e)}")
 
-            progress.progress(1) 
-
-            status.markdown(" Analysis complete!")
             st.session_state['results'] = results
 
     if 'results' in st.session_state and st.session_state['results']:
         results = st.session_state['results']
-
-        st.markdown("---")
-        st.markdown("## Analysis Summary")
-
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("Total Documents", len(results))
-        with col2:
-            st.metric("Identified RCTs", sum(1 for r in results if r['rct']['is_rct']))
-        with col3:
-            st.metric("Low Risk Assessments", sum(1 for r in results if any(b['judgement'] == 'low' for b in r['bias'])))
-        with col4:
-            st.metric("Documents with Issues", len(results) - sum(1 for r in results if r['rct']['is_rct']))
-
-       
 
         for result in results:
 
@@ -530,19 +733,24 @@ def main():
             rct = result['rct']
             rct_col1, rct_col2, rct_col3 = st.columns(3)
             with rct_col1:
-                st.metric("Is RCT?", "✅ Yes" if rct['is_rct'] else "❌ No", delta=f"Score: {rct['score']:.3f}")
+                st.metric("Is uploaded file an RCT?", "Yes" if rct['is_rct'] else "No", delta=f"Score: {rct['score']:.3f}")
             with rct_col2:
                 st.metric("Probability", f"{rct['probability']:.1%}")
             with rct_col3:
                 st.metric("Model", rct.get('model', 'SVM'))
 
+            st.markdown("---")
             st.markdown("###  Risk of Bias Assessment")
             bias = result.get('bias', [])
 
             if bias:
                 bias_data = []
                 for b in bias:
-                    judgement = b.get('judgement', 'N/A')
+                    raw_judgement = b.get('judgement', 'N/A')
+                    if raw_judgement == 'low':
+                        judgement = 'Low'
+                    else:
+                        judgement = 'High/Unclear'
                     domain = b.get('domain', '')
                     color = BIAS_COLORS.get(domain, (1.0, 0.3, 0.3))
                     hex_color = '#%02x%02x%02x' % (int(color[0] * 255), int(color[1] * 255), int(color[2] * 255))
@@ -556,7 +764,7 @@ def main():
                 df_bias = pd.DataFrame(bias_data)
 
                 def color_judgement(val):
-                    if val == 'low':
+                    if val == 'Low':
                         return 'background-color: #d4edda; color: #155724; font-weight: bold'
                     else:
                         return 'background-color: #f8d7da; color: #721c24; font-weight: bold'
@@ -568,41 +776,45 @@ def main():
 
                 st.dataframe(styled_df, width="stretch", hide_index=True)
 
-                if show_evidence:
-                    st.markdown("#### Evidence Sentences")
-                    for b in bias:
-                        domain = b.get('domain', '')
-                        color = BIAS_COLORS.get(domain, (1.0, 0.3, 0.3))
-                        hex_color = '#%02x%02x%02x' % (int(color[0] * 255), int(color[1] * 255), int(color[2] * 255))
-                        icon = "🟢" if b.get('judgement') == 'low' else "🔴"
+                st.markdown("#### Risk of Bias Assessment Evidence")
+                for b in bias:
+                    domain = b.get('domain', '')
+                    color = BIAS_COLORS.get(domain, (1.0, 0.3, 0.3))
+                    hex_color = '#%02x%02x%02x' % (int(color[0] * 255), int(color[1] * 255), int(color[2] * 255))
+                    icon = "🟢" if b.get('judgement') == 'low' else "🔴"
+                    raw_j = b.get('judgement', 'N/A')
+                    display_j = 'Low' if raw_j == 'low' else 'High/Unclear'
 
-                        with st.expander(f"{icon} {domain}"):
-                            ev_col1, ev_col2 = st.columns([1, 2])
-                            with ev_col1:
-                                st.markdown(f"**Judgement:** `{b.get('judgement', 'N/A')}`")
-                            with ev_col2:
-                                fg_color = 'white' if sum(color) < 1.5 else 'black'
-                                st.markdown(f"**Color:** <span style='background-color:{hex_color};padding:2px 8px;border-radius:3px;color:{fg_color}'>{hex_color}</span>", unsafe_allow_html=True)
+                    with st.expander(f"{icon} {domain}"):
+                        ev_col1, ev_col2 = st.columns([1, 2])
+                        with ev_col1:
+                            st.markdown(f"**Judgement:** `{display_j}`")
+                        with ev_col2:
+                            fg_color = 'white' if sum(color) < 1.5 else 'black'
+                            st.markdown(f"**Color:** <span style='background-color:{hex_color};padding:2px 8px;border-radius:3px;color:{fg_color}'>{hex_color}</span>", unsafe_allow_html=True)
 
-                            st.markdown("**Evidence:**")
-                            if b.get('text'):
-                                for i, evidence in enumerate(b['text'][:top_k_sentences], 1):
-                                    st.info(f"{i}. {evidence}")
-                            else:
-                                st.caption("_No evidence sentences found_")
+                        st.markdown(f"These are the sentences extracted from the uploaded RCT which depict particular **{domain}**.")
+                        st.markdown("**Evidence:**")
+                        if b.get('text'):
+                            for i, evidence in enumerate(b['text'], 1):
+                                render_evidence_item(i, evidence)
+                        else:
+                            st.caption("_No evidence sentences found_")
             else:
                 st.caption("_No Risk of Bias assessment could be generated._")
 
+            st.markdown("---")
             st.markdown("###  PICO Extraction")
             pico = result.get('pico', [])
             pico_icons = {"Population": "P - ", "Intervention": "I - ", "Outcomes": "O - "}
 
             for pico_domain in ["Population", "Intervention", "Outcomes"]:
-                with st.expander(f"{pico_icons.get(pico_domain, '📄')} {pico_domain}"):
+                with st.expander(f"{pico_icons.get(pico_domain)} {pico_domain}"):
+                    st.markdown(f"These are the sentences extracted from the uploaded RCT which depict particular **{pico_domain}**.")
                     domain_data = next((p for p in pico if p['domain'] == pico_domain), None)
                     if domain_data and domain_data.get('text'):
-                        for i, sent in enumerate(domain_data['text'][:top_k_sentences], 1):
-                            st.info(f"{i}. {sent}")
+                        for i, sent in enumerate(domain_data['text'], 1):
+                            render_evidence_item(i, sent)
                     else:
                         st.caption("_No elements extracted_")
 
@@ -612,7 +824,7 @@ def main():
 
             with dl_col1:
                 if st.button(" Generate Bias PDF", key=f"bias_pdf_{result['filename']}"):
-                    with st.spinner("Creating Bias-highlighted PDF..."):
+                    with st.spinner("Creating Bias-annotated PDF with highlights & superscripts..."):
                         annotations = []
                         for b in result.get('bias', []):
                             for text in b.get('text', []):
@@ -622,16 +834,13 @@ def main():
 
             with dl_col2:
                 if st.button(" Generate PICO PDF", key=f"pico_pdf_{result['filename']}"):
-                    with st.spinner("Creating PICO-highlighted PDF..."):
+                    with st.spinner("Creating PICO-annotated PDF with highlights & superscripts..."):
                         annotations = []
                         for p in result.get('pico', []):
                             for text in p.get('text', []):
                                 annotations.append({"text": text, "type": p['domain']})
                         pico_pdf = create_pico_highlighted_pdf(result['pdf_bytes'], annotations)
                         st.download_button(" Download PICO PDF", pico_pdf, f"pico_{result['filename']}", "application/pdf", key=f"dl_pico_{result['filename']}")
-
-  
-
 
         exp_col1, exp_col2 = st.columns(2)
 
@@ -664,7 +873,7 @@ def main():
         "Harvard": "Marshall, I.J., Kuiper, J., Banner, E. and Wallace, B.C., 2017. Automating Biomedical Evidence Synthesis: RobotReviewer. Proceedings of the Conference of the Association for Computational Linguistics (ACL), pp.7-12.",
         "MLA": 'Marshall, Iain J., et al. "Automating Biomedical Evidence Synthesis: RobotReviewer." Proceedings of the Conference of the Association for Computational Linguistics (ACL), 2017, pp. 7–12.',
         "Chicago": 'Marshall, Iain J., Joël Kuiper, Edward Banner, and Byron C. Wallace. 2017. "Automating Biomedical Evidence Synthesis: RobotReviewer." Proceedings of the Conference of the Association for Computational Linguistics (ACL), 7–12.',
-        "IEEE": 'I. J. Marshall, J. Kuiper, E. Banner, and B. C. Wallace, "Automating Biomedical Evidence Synthesis: RobotReviewer," in Proceedings of the Conference of the Association for Computational Linguistics (ACL), 2017, pp. 7–12.',
+        "IEEE": 'I. J. Marshall, J. Kuiper, E. Banner, and B. C. Wallace, "Automating Biomedical Evidence Synthesis: RobotReviewer," in Proceedings of the Conference of the Association for Computational Linguistics (ACL), 2017, pp. 7-12.',
         "Vancouver": "Marshall IJ, Kuiper J, Banner E, Wallace BC. Automating Biomedical Evidence Synthesis: RobotReviewer. Proceedings of the Conference of the Association for Computational Linguistics (ACL). 2017:7-12."
     }
 
@@ -676,7 +885,6 @@ def main():
     rct_cite_text = rct_citations[citation_style]
     robot_cite_text = robot_citations[citation_style]
 
-   
 
     st.markdown(f'<div class="citation-box"><p style="margin:0;">{rct_cite_text}</p></div>', unsafe_allow_html=True)
 
@@ -700,7 +908,7 @@ ER  -"""
     rct_bib_encoded = base64.b64encode(rct_bib.encode()).decode()
 
     escaped_rct_citation = rct_cite_text.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
-    components.html(f"""
+    st.html(f"""
     <style>
         .cit-btn {{
             background-color: #5370d6;
@@ -711,15 +919,12 @@ ER  -"""
             border-radius: 5px;
             border: none;
             cursor: pointer;
-
-    
             text-decoration: none;
             display: inline-block;
         }}
         .cit-btn:hover {{
             background-color: #4157a5;
             transform: translateY(-2px);
-            
         }}
         .cit-btn-row {{
             display: flex;
@@ -747,9 +952,9 @@ ER  -"""
             }});
         }});
     </script>
-    """, height=50)
+    """)
 
-    
+
 
     st.markdown(f'<div class="citation-box"><p style="margin:0;">{robot_cite_text}</p></div>', unsafe_allow_html=True)
 
@@ -779,7 +984,7 @@ ER  -"""
     robot_bib_encoded = base64.b64encode(robot_bib.encode()).decode()
 
     escaped_robot_citation = robot_cite_text.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
-    components.html(f"""
+    st.html(f"""
     <style>
         .cit-btn {{
             background-color: #5370d6;
@@ -790,15 +995,12 @@ ER  -"""
             border-radius: 5px;
             border: none;
             cursor: pointer;
-
-    
             text-decoration: none;
             display: inline-block;
         }}
         .cit-btn:hover {{
             background-color: #4157a5;
             transform: translateY(-2px);
-            
         }}
         .cit-btn-row {{
             display: flex;
@@ -826,7 +1028,7 @@ ER  -"""
             }});
         }});
     </script>
-    """, height=50)
+    """)
 
     st.markdown("---")
     st.markdown("##  Acknowledgements")
@@ -835,20 +1037,20 @@ ER  -"""
 
     I would also like to thank all contributors and collaborators involved in the RobotReviewer ecosystem, including the Cochrane Crowd and the research teams at UPenn, Northeastern, and UCL, whose efforts in data collection and model development made this tool possible.
 
-    Additionally, I acknowledge the use of [RikaiCode](https://rikaicode.github.io) (Code Repository Context Generator), which was invaluable for analyzing and understanding the complex logic of the original RobotReviewer codebase during the modernization process.
+    Additionally, I would like to acknowledge the use of [RikaiCode](https://rikaicode.github.io) (Code Repository Context Generator) and [GLM-4.7](https://huggingface.co/zai-org/GLM-4.7), which were invaluable in analyzing and understanding the complex logic of the original [RobotReviewer](https://github.com/ijmarshall/robotreviewer) codebase, as well as assisting in the development and modernization of RobotReviewer.
     """)
 
 
     st.markdown("---")
-    
+
     st.markdown("### References")
     st.markdown("""
     <a id="ref-1"></a>1. Marshall IJ, Kuiper J, Wallace BC. RobotReviewer: evaluation of a system for automatically assessing bias in clinical trials. Journal of the American Medical Informatics Association. 2016;23(1):193-201. [doi](http://dx.doi.org/10.1093/jamia/ocv044)
-    
+
     <a id="ref-2"></a>2. Soboczenski F, et al. Machine learning to help researchers evaluate biases in clinical trials: a prospective, randomized user study. BMC Medical Informatics and Decision Making. 2019;19(1):96. [doi](http://dx.doi.org/10.1186/s12911-019-0814-z)
-    
+
     <a id="ref-3"></a>3. Nussbaumer-Streit B, et al. Automating risk of bias assessment in systematic reviews: a real-time mixed methods comparison of human researchers to a machine learning system. BMC Medical Research Methodology. 2022;22:160. [doi](http://dx.doi.org/10.1186/s12874-022-01649-y)
-    
+
     <a id="ref-4"></a>4. Marshall I, Kuiper J, Wallace B. Automating Risk of Bias Assessment for Clinical Trials. IEEE Journal of Biomedical and Health Informatics. 2015;19(4):1406-1412. [doi](http://dx.doi.org/10.1109/JBHI.2015.2431314)
     """, unsafe_allow_html=True)
 
@@ -866,7 +1068,7 @@ ER  -"""
 
     [![GNU GPL v3 License](https://www.gnu.org/graphics/gplv3-with-text-136x68.png)](https://www.gnu.org/licenses/gpl-3.0.en.html)
 
-    
+
     """)
 
 
