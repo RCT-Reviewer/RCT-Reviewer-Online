@@ -1,8 +1,8 @@
 
-#RCT-Reviwer
+#RCT-Reviewer
 
 
-streamlit>=1.55.0
+streamlit==1.55.0
 pymupdf>=1.26.1
 spacy>=3.8.14
 numpy>=2.3.0
