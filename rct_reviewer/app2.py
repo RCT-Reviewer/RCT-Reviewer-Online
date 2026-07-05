@@ -3,6 +3,11 @@
 
 # This .py file downloads models from Hugging Face hub. This is the default recommended mode which is hosted online.
 
+
+
+# The reason I made this monolithic code file is that I wanted none of the .py files to share similar .py components (functions) since that would make maintaining RCT-Reviewer long term, quite difficult for me. 
+# The other .py files (app.py , app1.py) are developer run and so may not have any latest function which this default .py (app2.py) may have in the near future.
+
 import os
 os.environ["HF_HUB_DOWNLOAD_TIMEOUT"] = "300"
 os.environ["HF_HUB_ETAG_TIMEOUT"] = "60"
@@ -1279,23 +1284,25 @@ ER  -"""
     st.markdown(f'<div class="citation-box"><p style="margin:0;">{robot_cite_text}</p></div>', unsafe_allow_html=True)
 
     robot_ris = """TY  - JOUR
-AU  - Marshall, I. J.
-AU  - Kuiper, J.
-AU  - Banner, E.
-AU  - Wallace, B. C.
+AU  - Marshall, IJ
+AU  - Kuiper, J
+AU  - Banner, E
+AU  - Wallace, BC
 TI  - Automating Biomedical Evidence Synthesis: RobotReviewer
+JO  - Proceedings of the Conference of the Association for Computational Linguistics (ACL)
 PY  - 2017
-T2  - Proceedings of the Conference of the Association for Computational Linguistics (ACL)
 SP  - 7
 EP  - 12
 ER  -"""
 
-    robot_bib = """@inproceedings{Marshall2017RobotReviewer,
-  author    = {Marshall, Iain J. and Kuiper, Jo{\"e}l and Banner, Edward and Wallace, Byron C.},
-  title     = {Automating Biomedical Evidence Synthesis: RobotReviewer},
-  booktitle = {Proceedings of the Conference of the Association for Computational Linguistics (ACL)},
-  year      = {2017},
-  pages     = {7--12}
+    robot_bib = """@article{RobotReviewer2017,
+  title    = {{Automating Biomedical Evidence Synthesis: {{RobotReviewer}}}},
+  author   = {Marshall, Iain J and Kuiper, Jo{\"e}l and Banner, Edward and Wallace, Byron C},
+  journal  = {Proceedings of the Conference of the Association for Computational Linguistics (ACL)},
+  volume   = {2017},
+  pages    = {7--12},
+  month    = {jul},
+  year     = {2017},
 }"""
 
     robot_ris_encoded = base64.b64encode(robot_ris.encode()).decode()
@@ -1348,31 +1355,67 @@ ER  -"""
     </script>
     """, height=50)
 
+    st.markdown("---")
+    st.markdown("##  Acknowledgements")
+    st.markdown("""
+    RCT-Reviewer is a modernized version of the original [RobotReviewer](https://github.com/ijmarshall/robotreviewer). I extend my sincere gratitude to the original authors: **Iain J. Marshall, Joël Kuiper, Edward Banner, and Byron C. Wallace** for their foundational work in biomedical NLP and for releasing the project as open-source.
+
+    I would also like to thank all contributors and collaborators involved in the RobotReviewer ecosystem, including the Cochrane Crowd and the research teams at UPenn, Northeastern, and UCL, whose efforts in data collection and model development made this tool possible.
+
+    Additionally, I would like to acknowledge the use of [RikaiCode](https://rikaicode.github.io) (Code Repository Context Generator) and [GLM-4.7](https://huggingface.co/zai-org/GLM-4.7), which were invaluable in analyzing and understanding the complex logic of the original [RobotReviewer](https://github.com/ijmarshall/robotreviewer) codebase, as well as assisting in the development and modernization of RobotReviewer.
+    """)
+
 
     st.markdown("---")
 
+    st.markdown("### References")
     st.markdown("""
-    <div style="text-align:center; margin-top: 10px;">
-        <p style="font-size: 0.8rem; color: #999; margin: 0;">
-            <strong>References</strong><br>
-            <span id="ref-1">[1]</span> Marshall, I.J., Kuiper, J., & Wallace, B.C. (2016). <em>Towards automating the systematic review process: RobotAnalyst vs. human analyst performance</em>. <br>
-            <span id="ref-2">[2]</span> Marshall, I.J., et al. (2016). <em>What machine learning can do for systematic reviewers</em>. <br>
-            <span id="ref-3">[3]</span> Marshall, I.J., et al. (2018). <em>RobotReviewer: evaluation of a system for automatically assessing bias in randomized controlled trials</em>. <em>JAMIA</em>.<br>
-            <span id="ref-4">[4]</span> Wallace, B.C., et al. (2017). <em>Automating data extraction in systematic reviews: RobotReviewer</em>.
-        </p>
-    </div>
+    <a id="ref-1"></a>1. Marshall IJ, Kuiper J, Wallace BC. RobotReviewer: evaluation of a system for automatically assessing bias in clinical trials. Journal of the American Medical Informatics Association. 2016;23(1):193-201. [doi](http://dx.doi.org/10.1093/jamia/ocv044)
+
+    <a id="ref-2"></a>2. Soboczenski F, et al. Machine learning to help researchers evaluate biases in clinical trials: a prospective, randomized user study. BMC Medical Informatics and Decision Making. 2019;19(1):96. [doi](http://dx.doi.org/10.1186/s12911-019-0814-z)
+
+    <a id="ref-3"></a>3. Nussbaumer-Streit B, et al. Automating risk of bias assessment in systematic reviews: a real-time mixed methods comparison of human researchers to a machine learning system. BMC Medical Research Methodology. 2022;22:160. [doi](http://dx.doi.org/10.1186/s12874-022-01649-y)
+
+    <a id="ref-4"></a>4. Marshall I, Kuiper J, Wallace B. Automating Risk of Bias Assessment for Clinical Trials. IEEE Journal of Biomedical and Health Informatics. 2015;19(4):1406-1412. [doi](http://dx.doi.org/10.1109/JBHI.2015.2431314)
     """, unsafe_allow_html=True)
 
+    st.markdown("---")
+    st.markdown("### Related")
+    st.markdown("""
+    - RCT-Reviewer: https://github.com/aurumz-rgb/RCT-Reviewer
+    - RCT-Reviewer Hugging Face: https://huggingface.co/Aurumz/RCT-Reviewer
+    - Original RobotReviewer: https://github.com/ijmarshall/robotreviewer
+    - RobotReviewer Zenodo: https://zenodo.org/records/6855718
+    """)
 
     st.markdown("""
-    <div class="fixed-footer">
-        <span class="footer-text">
-            RCT-Reviewer (2026) — A Modernized Tool for Automated Clinical Trial Analysis — 
-            <a href="https://doi.org/10.5281/zenodo.20618338" target="_blank">DOI: 10.5281/zenodo.20618338</a> — 
-            Built upon <a href="https://github.com/ijmarshall/robotreviewer" target="_blank">RobotReviewer</a> (Marshall et al., 2017)
-        </span>
-    </div>
-    """, unsafe_allow_html=True)
+                This project is a derivative work of [RobotReviewer](https://github.com/ijmarshall/robotreviewer) and is distributed under the *GNU GENERAL PUBLIC LICENSE v3.0.*
+
+    [![GNU GPL v3 License](https://www.gnu.org/graphics/gplv3-with-text-136x68.png)](https://www.gnu.org/licenses/gpl-3.0.en.html)
+
+
+    """)
+
+
+    st.markdown(
+        f"""
+        <div class="fixed-footer">
+            <div style="display: flex; justify-content: space-between; align-items: center; max-width: 1200px; margin: 0 auto;">
+                <div class="footer-text">
+                    © Vihaan Sahu 2026  –  Redistributed under GNU GPL v3.0
+                </div>
+                <div>
+                    <a href="https://github.com/aurumz-rgb/RCT-Reviewer" target="_blank">
+                        GitHub Repository
+                    </a>
+                </div>
+                <div>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 
 if __name__ == "__main__":
