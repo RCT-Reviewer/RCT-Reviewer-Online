@@ -92,4 +92,6 @@ Marshall IJ, Kuiper J, Banner E, Wallace BC. “Automating Biomedical Evidence S
 
 ## License
 
+[![GNU GPL v3 License](https://www.gnu.org/graphics/gplv3-with-text-136x68.png)](https://www.gnu.org/licenses/gpl-3.0.en.html)
+
 This project is a derivative work of [RobotReviewer](https://github.com/ijmarshall/robotreviewer) and is distributed under the GNU GENERAL PUBLIC LICENSE v3.0.
