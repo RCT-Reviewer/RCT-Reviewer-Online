@@ -999,43 +999,92 @@ def main():
             status = st.empty()
 
             file_to_process = uploaded_files[0]
+            fname = file_to_process.name
 
-            status.markdown(f"**Processing: {file_to_process.name}**")
+            status.markdown(f"**Processing: {fname}**")
             progress.progress(0.1, text="Reading PDF...")
+
+            print(f"[RCT-Reviewer]  Processing PDF: {fname} - Reading and parsing PDF...")
+            log.info(f" Processing PDF: {fname} - Reading and parsing PDF...")
+
+
             try:
                 pdf_bytes = file_to_process.getvalue()
                 parsed_data = parser.parse(pdf_bytes)
 
+                num_sentences = len(parsed_data['sentences'])
+                print(f"[RCT-Reviewer]  PDF parsed successfully: {fname} - {num_sentences} sentences extracted")
+                log.info(f"PDF parsed successfully: {fname} - {num_sentences} sentences extracted")
+          
+
                 progress.progress(0.3, text="PDF parsed. Checking content...")
 
                 if not parsed_data['sentences']:
-                    st.error(f"Could not extract text from {file_to_process.name}")
+                    st.error(f"Could not extract text from {fname}")
                     progress.progress(1.0, text="Failed - no text extracted")
                     status.markdown(" Analysis failed: could not extract text.")
+                    print(f"[RCT-Reviewer] ❌ Failed to extract text from PDF: {fname}")
+                    log.error(f"❌ Failed to extract text from PDF: {fname}")
+            
                 else:
+
+                    print(f"[RCT-Reviewer]  Running RCT classification model on: {fname}...")
+                    log.info(f"Running RCT classification model on: {fname}...")
+                 
+
                     progress.progress(0.4, text="Running RCT classification...")
-                    status.markdown(f"**Running ML analysis on {file_to_process.name}...**")
+                    status.markdown(f"**Running ML analysis on {fname}...**")
 
                     rct_res = models['rct'].predict(parsed_data['title'], parsed_data['abstract'])
+
+                    rct_label = "Yes" if rct_res['is_rct'] else "No"
+                    print(f"[RCT-Reviewer] RCT classification complete for: {fname} - Is RCT: {rct_label} (Score: {rct_res['score']:.3f})")
+                    log.info(f"RCT classification complete for: {fname} - Is RCT: {rct_label} (Score: {rct_res['score']:.3f})")
+        
+
+                    print(f"[RCT-Reviewer] Running PICO extraction model on: {fname}...")
+                    log.info(f"Running PICO extraction model on: {fname}...")
+         
 
                     progress.progress(0.6, text="Running PICO extraction...")
                     pico_res = models['pico'].annotate(parsed_data['sentences'])
 
+                    pico_counts = {p['domain']: len(p.get('text', [])) for p in pico_res}
+                    print(f"[RCT-Reviewer] PICO extraction complete for: {fname} - Extracted: {pico_counts}")
+                    log.info(f"PICO extraction complete for: {fname} - Extracted: {pico_counts}")
+           
+
+                    print(f"[RCT-Reviewer] Running Risk of Bias assessment model on: {fname}...")
+                    log.info(f" Running Risk of Bias assessment model on: {fname}...")
+                
+
                     progress.progress(0.8, text="Running Risk of Bias assessment...")
                     bias_res = models['bias'].annotate(parsed_data['sentences'], parsed_data['text'])
+
+                    bias_summary = {b['domain']: b.get('judgement', 'N/A') for b in bias_res}
+                    print(f"[RCT-Reviewer] Risk of Bias assessment complete for: {fname} - Judgements: {bias_summary}")
+                    log.info(f"Risk of Bias assessment complete for: {fname} - Judgements: {bias_summary}")
+               
 
                     progress.progress(1.0)
                     status.markdown(" Analysis complete!")
 
+                    print(f"[RCT-Reviewer] ✅ Full analysis complete for PDF: {fname}")
+                    log.info(f"✅ Full analysis complete for PDF: {fname}")
+                  
+
                     result = {
-                        "filename": file_to_process.name, "pdf_bytes": pdf_bytes,
+                        "filename": fname, "pdf_bytes": pdf_bytes,
                         "rct": rct_res, "pico": pico_res, "bias": bias_res, "parsed": parsed_data
                     }
                     results.append(result)
             except Exception as e:
                 progress.progress(1.0, text="Failed with error")
                 status.markdown(f"❌ Analysis failed: {str(e)}")
-                st.error(f"Error processing {file_to_process.name}: {str(e)}")
+                st.error(f"Error processing {fname}: {str(e)}")
+                print(f"[RCT-Reviewer] ❌ Error processing PDF: {fname} - {str(e)}")
+                log.error(f"❌ Error processing PDF: {fname} - {str(e)}")
+             
 
             st.session_state['results'] = results
 
@@ -1137,47 +1186,88 @@ def main():
 
             with dl_col1:
                 if st.button(" Generate Bias PDF", key=f"bias_pdf_{result['filename']}"):
-                    with st.spinner("Creating Bias-annotated PDF with highlights & superscripts..."):
+                    fname = result['filename']
+                    print(f"[RCT-Reviewer] Generating Bias highlighted PDF for: {fname}...")
+                    log.info(f"Generating Bias highlighted PDF for: {fname}...")
+
+                    with st.spinner("Creating Bias-annotated PDF with highlights & superscripts... Please be patient... This may take some time..."):
                         annotations = []
                         for b in result.get('bias', []):
                             for text in b.get('text', []):
                                 annotations.append({"text": text, "type": "bias", "bias_domain": b.get('domain', '')})
                         bias_pdf = create_bias_highlighted_pdf(result['pdf_bytes'], annotations)
+                        print(f"[RCT-Reviewer] ✅ Bias highlighted PDF generated successfully for: {fname}")
+                        log.info(f"✅ Bias highlighted PDF generated successfully for: {fname}")
+  
                         st.download_button(" Download Bias PDF", bias_pdf, f"bias_{result['filename']}", "application/pdf", key=f"dl_bias_{result['filename']}")
 
             with dl_col2:
                 if st.button(" Generate PICO PDF", key=f"pico_pdf_{result['filename']}"):
-                    with st.spinner("Creating PICO-annotated PDF with highlights & superscripts..."):
+                    fname = result['filename']
+                    print(f"[RCT-Reviewer] Generating PICO highlighted PDF for: {fname}...")
+                    log.info(f"Generating PICO highlighted PDF for: {fname}...")
+            
+                    with st.spinner("Creating PICO-annotated PDF with highlights & superscripts... Please be patient... This may take some time..."):
                         annotations = []
                         for p in result.get('pico', []):
                             for text in p.get('text', []):
                                 annotations.append({"text": text, "type": p['domain']})
                         pico_pdf = create_pico_highlighted_pdf(result['pdf_bytes'], annotations)
+                        print(f"[RCT-Reviewer] ✅ PICO highlighted PDF generated successfully for: {fname}")
+                        log.info(f"✅ PICO highlighted PDF generated successfully for: {fname}")
+                    
                         st.download_button(" Download PICO PDF", pico_pdf, f"pico_{result['filename']}", "application/pdf", key=f"dl_pico_{result['filename']}")
 
             dl_col3, dl_col4 = st.columns(2)
 
             with dl_col3:
                 if st.button(" Generate Bias Evidence PDF", key=f"bias_ev_{result['filename']}"):
+                    fname = result['filename']
+                    print(f"[RCT-Reviewer] Generating Bias Evidence PDF for: {fname}...")
+                    log.info(f"Generating Bias Evidence PDF for: {fname}...")
+                 
                     bias_ev_pdf = create_bias_evidence_pdf(result.get('bias', []), result['filename'])
+                    print(f"[RCT-Reviewer] ✅ Bias Evidence PDF generated successfully for: {fname}")
+                    log.info(f"✅ Bias Evidence PDF generated successfully for: {fname}")
+             
                     st.download_button(" Download Bias Evidence", bias_ev_pdf, f"bias_evidence_{result['filename']}", "application/pdf", key=f"dl_bias_ev_{result['filename']}")
 
             with dl_col4:
                 if st.button(" Generate PICO Evidence PDF", key=f"pico_ev_{result['filename']}"):
+                    fname = result['filename']
+                    print(f"[RCT-Reviewer] Generating PICO Evidence PDF for: {fname}...")
+                    log.info(f"Generating PICO Evidence PDF for: {fname}...")
+                   
                     pico_ev_pdf = create_pico_evidence_pdf(result.get('pico', []), result['filename'])
+                    print(f"[RCT-Reviewer] ✅ PICO Evidence PDF generated successfully for: {fname}")
+                    log.info(f"✅ PICO Evidence PDF generated successfully for: {fname}")
+             
                     st.download_button(" Download PICO Evidence", pico_ev_pdf, f"pico_evidence_{result['filename']}", "application/pdf", key=f"dl_pico_ev_{result['filename']}")
 
         exp_col1, exp_col2 = st.columns(2)
 
         with exp_col1:
             if st.button(" Export JSON"):
+                print(f"[RCT-Reviewer] Exporting results to JSON...")
+                log.info(f"Exporting results to JSON...")
+
                 json_data = export_to_json(results)
+                print(f"[RCT-Reviewer] ✅ JSON export complete")
+                log.info(f"✅ JSON export complete")
+                
                 st.download_button("Download JSON", json_data, f"rct_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json", "application/json")
 
         with exp_col2:
             if st.button(" Export CSV"):
+                print(f"[RCT-Reviewer] Exporting results to CSV...")
+                log.info(f"Exporting results to CSV...")
+   
                 csv_data = export_to_csv(results)
+                print(f"[RCT-Reviewer] CSV export complete")
+                log.info(f"CSV export complete")
+  
                 st.download_button("Download CSV", csv_data, f"rct_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv", "text/csv")
+
 
 
     st.markdown("---")
