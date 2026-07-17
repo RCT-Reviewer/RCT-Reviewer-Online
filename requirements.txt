@@ -11,7 +11,7 @@ scikit-learn>=1.7.0
 pandas>=2.3.0
 pydantic>=2.12.0
 pydantic-settings>=2.10.0
-networkx>=3.5
+networkx>=3.6.1
 huggingface_hub>=0.34.0
 
 en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
