@@ -1106,7 +1106,7 @@ def main():
                 mapped = pct * 0.8
                 overall_progress.progress(
                     mapped,
-                    text=f"[Download] {text}" if text else f"[Download] {pct*100:.1f}%"
+                    text=f"[ONE TIME DOWNLOAD] {text}" if text else f"[ONE TIME DOWNLOAD] {pct*100:.1f}%"
                 )
 
         class _DownloadStatusProxy:
