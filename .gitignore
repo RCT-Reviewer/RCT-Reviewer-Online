@@ -106,33 +106,4 @@ robotreviewer/config.json
 
 
 
-# Virtual environments
-.venv/
-venv/
-env/
-
-# Python cache
-__pycache__/
-*.pyc
-
-# Mac
-.DS_Store
-
-# Large model/data files
-*.h5
-*.hdf5
-*.pickle
-*.pck
-*.npz
-*.joblib
-*.sqlite
-
-# Uploaded PDFs
-uploaded_pdfs/
-
-# HuggingFace cache
-.cache/
-
-# IDE
-.vscode/
-.idea/
+rct_reviewer/.env

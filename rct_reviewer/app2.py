@@ -5,8 +5,8 @@
 
 
 
-# The reason I made this monolithic code file is that I wanted none of the .py files to share similar .py components (functions) since that would make maintaining RCT-Reviewer long term, quite difficult for me. 
-# The other .py files (app.py , app1.py) are developer run and so may not have any latest function which this default .py (app2.py) may have in the near future.
+# The other .py files (app.py , app1.py) are developer run and so, may not have any latest functions / features which this default version has.
+
 
 import os
 os.environ["HF_HUB_DOWNLOAD_TIMEOUT"] = "300"
@@ -102,44 +102,121 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 log = logging.getLogger(__name__)
 
 
-def download_models():
+def _format_eta(seconds):
+    if seconds < 0 or seconds == float('inf') or seconds != seconds:
+        return "calculating..."
+    if seconds < 1:
+        return "<1s"
+    if seconds < 60:
+        return f"~{int(seconds)}s"
+    minutes = int(seconds // 60)
+    secs = int(seconds % 60)
+    if minutes < 60:
+        return f"~{minutes}m {secs}s"
+    hours = int(minutes // 60)
+    mins = int(minutes % 60)
+    return f"~{hours}h {mins}m"
+
+def download_models(progress_bar=None, status_text=None):
     check_file = MODELS_DIR / "pico" / "P_model.npz"
 
     if check_file.exists():
         log.info("Models already exist in cache.")
+        if progress_bar is not None:
+            progress_bar.progress(1.0, text="Models already cached locally - ready!")
+        if status_text is not None:
+            status_text.success("Models already downloaded and cached.")
         return True
 
-    msg = st.empty()
-    msg.info(" Models not found locally. Downloading from Hugging Face Hub (One-time setup)...")
+    try:
+        from huggingface_hub import HfApi, hf_hub_download
+    except ImportError:
+        if status_text is not None:
+            status_text.error(" `huggingface_hub` library not found. Please add it to requirements.txt.")
+        return False
 
-    from huggingface_hub import snapshot_download
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
+    if status_text is not None:
+        status_text.info("Models not found locally. Downloading from Hugging Face Hub (One-time setup)...")
+
+    api = HfApi()
+    try:
+        files = api.list_repo_files(HF_REPO_ID, repo_type="model")
+    except Exception as e:
+        if status_text is not None:
+            status_text.error(f" Failed to list repository files: {e}")
+        return False
+
+    total_files = len(files)
+    if total_files == 0:
+        if status_text is not None:
+            status_text.error(" No files found in the repository.")
+        return False
+
     max_retries = 3
-    retry_count = 0
+    start_time = time.time()
+    files_completed = 0
 
-    while retry_count < max_retries:
-        try:
-            snapshot_download(
-                repo_id=HF_REPO_ID,
-                repo_type="model",
-                local_dir=MODELS_DIR,
-                max_workers=1
-            )
-            msg.success(f"Models downloaded successfully to: {MODELS_DIR}! Please do not clear this Streamlit's cache.")
-            return True
+    for idx, fname in enumerate(files):
+        retry_count = 0
+        file_success = False
 
-        except ImportError:
-            msg.error(" `huggingface_hub` library not found. Please add it to requirements.txt.")
+        while retry_count < max_retries:
+            try:
+                hf_hub_download(
+                    repo_id=HF_REPO_ID,
+                    filename=fname,
+                    repo_type="model",
+                    local_dir=MODELS_DIR
+                )
+                file_success = True
+                break
+            except Exception as e:
+                retry_count += 1
+                if retry_count < max_retries:
+                    if status_text is not None:
+                        status_text.warning(f"⚠️ Download attempt {retry_count} for `{fname}` failed: {str(e)[:80]}... Retrying in 3s...")
+                    time.sleep(3)
+                else:
+                    if status_text is not None:
+                        status_text.error(f" Failed to download `{fname}` after {max_retries} attempts: {e}")
+                    return False
+
+        if not file_success:
             return False
-        except Exception as e:
-            retry_count += 1
-            if retry_count < max_retries:
-                msg.warning(f"⚠️ Download attempt {retry_count} failed: {str(e)[:100]}... Retrying in 5s...")
-                time.sleep(5)
-            else:
-                msg.error(f" Failed to download models after {max_retries} attempts: {e}")
-                return False
+
+        files_completed = idx + 1
+        elapsed = time.time() - start_time
+        files_remaining = total_files - files_completed
+
+        if files_completed > 0 and files_remaining > 0:
+            avg_time_per_file = elapsed / files_completed
+            eta_seconds = avg_time_per_file * files_remaining
+            eta_str = _format_eta(eta_seconds)
+        elif files_remaining == 0:
+            eta_str = "0s"
+        else:
+            eta_str = "calculating..."
+
+        progress_pct = files_completed / total_files
+
+        if progress_bar is not None:
+            progress_bar.progress(
+                progress_pct,
+                text=f"Downloading models: {files_completed}/{total_files} files ({progress_pct*100:.1f}%) - Time remaining: {eta_str}"
+            )
+
+        if status_text is not None:
+            status_text.info(f"Downloaded `{fname}` ({files_completed}/{total_files}) - ETA: {eta_str}")
+
+    if progress_bar is not None:
+        progress_bar.progress(1.0, text="All model files downloaded successfully! (100%)")
+    if status_text is not None:
+        status_text.success(f"Models downloaded successfully to: {MODELS_DIR}! Please do not clear this Streamlit's cache.")
+
+    log.info("All model files downloaded successfully.")
+    return True
 
 
 import rct_reviewer
@@ -156,12 +233,59 @@ from rct_reviewer.ml.bias_robot import BiasRobot
 
 
 @st.cache_resource
-def load_models():
-    return {
-        "rct": RCTRobot(),
-        "pico": PICORobot(),
-        "bias": BiasRobot()
-    }
+def _load_rct_model():
+    return RCTRobot()
+
+@st.cache_resource
+def _load_pico_model():
+    return PICORobot()
+
+@st.cache_resource
+def _load_bias_model():
+    return BiasRobot()
+
+def load_models_with_progress(progress_bar=None, status_text=None):
+    loaders = [
+        ("RCT", _load_rct_model),
+        ("PICO", _load_pico_model),
+        ("Bias", _load_bias_model),
+    ]
+    total = len(loaders)
+    models = {}
+    start_time = time.time()
+
+    for i, (name, fn) in enumerate(loaders):
+        completed = i
+        remaining = total - completed
+
+        if completed > 0 and remaining > 0:
+            elapsed = time.time() - start_time
+            avg = elapsed / completed
+            eta_seconds = avg * remaining
+            eta_str = _format_eta(eta_seconds)
+        elif remaining == 0:
+            eta_str = "0s"
+        else:
+            eta_str = "calculating..."
+
+        pct = completed / total
+
+        if progress_bar is not None:
+            progress_bar.progress(
+                pct,
+                text=f"Loading ML models: {name} ({completed}/{total} loaded) - Time remaining: {eta_str}"
+            )
+        if status_text is not None:
+            status_text.info(f"Loading {name} model from cache... ({completed}/{total} done) - ETA: {eta_str}")
+
+        models[name.lower()] = fn()
+
+    if progress_bar is not None:
+        progress_bar.progress(1.0, text="All ML models loaded successfully! (100%)")
+    if status_text is not None:
+        status_text.success("All models are fully loaded and ready.")
+
+    return models
 
 
 @st.cache_resource
@@ -972,17 +1096,73 @@ def main():
         st.session_state.models_ready = False
 
     if not st.session_state.models_ready:
-        with st.spinner("Checking / downloading models..."):
-            success = download_models()
-            if success:
-                st.session_state.models_ready = True
-            else:
-                st.error("Model download failed. Please check logs.")
-                st.stop()
+        overall_progress = st.progress(0.0, text="Initializing model setup...")
+        overall_status = st.empty()
 
-    with st.spinner("Loading ML models from cache..."):
-        models = load_models()
+        overall_status.info("Phase 1/2: Checking and downloading models from Hugging Face Hub...")
+
+        class _DownloadProgressProxy:
+            def progress(self, pct, text=None):
+                mapped = pct * 0.8
+                overall_progress.progress(
+                    mapped,
+                    text=f"[Download] {text}" if text else f"[Download] {pct*100:.1f}%"
+                )
+
+        class _DownloadStatusProxy:
+            def info(self, msg):
+                overall_status.info(msg)
+            def success(self, msg):
+                overall_status.success(msg)
+            def warning(self, msg):
+                overall_status.warning(msg)
+            def error(self, msg):
+                overall_status.error(msg)
+
+        success = download_models(
+            progress_bar=_DownloadProgressProxy(),
+            status_text=_DownloadStatusProxy()
+        )
+
+        if not success:
+            overall_progress.empty()
+            overall_status.error("Model download failed. Please check logs.")
+            st.stop()
+
+        overall_status.info("Phase 2/2: Loading ML models from cache into memory...")
+
+        class _LoadProgressProxy:
+            def progress(self, pct, text=None):
+                mapped = 0.8 + pct * 0.2
+                overall_progress.progress(
+                    mapped,
+                    text=f"[Load] {text}" if text else f"[Load] {pct*100:.1f}%"
+                )
+
+        models = load_models_with_progress(
+            progress_bar=_LoadProgressProxy(),
+            status_text=_DownloadStatusProxy()
+        )
         parser = get_parser()
+
+        overall_progress.progress(1.0, text="All models fully downloaded and loaded — ready! (100%)")
+        overall_status.success("Setup complete. All models are ready for analysis.")
+        time.sleep(1.0)  
+        overall_progress.empty()
+        overall_status.empty()
+
+        st.session_state.models_ready = True
+        st.session_state["_loaded_models"] = models
+        st.session_state["_loaded_parser"] = parser
+    else:
+        models = st.session_state.get("_loaded_models")
+        parser = st.session_state.get("_loaded_parser")
+        if models is None or parser is None:
+        
+            models = load_models_with_progress()
+            parser = get_parser()
+            st.session_state["_loaded_models"] = models
+            st.session_state["_loaded_parser"] = parser
 
     st.markdown("---")
     st.markdown("## Analysis Tool")
@@ -1510,3 +1690,18 @@ ER  -"""
 
 if __name__ == "__main__":
     main()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# The reason I made this monolithic code file is that I wanted none of the .py files to share similar .py components (functions) since that would make maintaining RCT-Reviewer long term, quite difficult for me AND I plan to keep updating app2.py in future and not the others.
