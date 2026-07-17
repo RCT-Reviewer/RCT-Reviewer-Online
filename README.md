@@ -1,7 +1,9 @@
 ![banner](assets/banner_transparent.png)
 
 
-**RCT-Reviewer** is a modernized, standalone version of [RobotReviewer](https://github.com/ijmarshall/robotreviewer?utm_source=chatgpt.com), designed as a third-party reference tool for Risk of Bias assessment. It builds upon RobotReviewer’s original machine learning models trained on 12,808 randomized controlled trials (RCTs).
+[![CI](https://github.com/RCT-Reviewer/RCT-Reviewer-Online/actions/workflows/ci.yml/badge.svg)](https://github.com/RCT-Reviewer/RCT-Reviewer-Online/actions/workflows/ci.yml)
+
+**RCT-Reviewer** is a modernized, standalone version of [RobotReviewer](https://github.com/ijmarshall/robotreviewer), designed as a third-party reference tool for Risk of Bias assessment. It builds upon RobotReviewer’s original machine learning models trained on 12,808 randomized controlled trials (RCTs).
 
 
 ---
