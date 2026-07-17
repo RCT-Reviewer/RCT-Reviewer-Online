@@ -1,0 +1,6 @@
+pytest>=7.0
+pytest-cov>=4.0
+
+
+
+# Switch to .venv, make sure all dependencies exist and run " /Users/vihaan/RCT-Reviewer/.venv/bin/python3.12 -m pytest tests/ -v "
