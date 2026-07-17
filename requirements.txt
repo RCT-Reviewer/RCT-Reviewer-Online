@@ -6,7 +6,7 @@ streamlit==1.55.0
 pymupdf>=1.26.1
 spacy>=3.8.14
 numpy>=2.3.0
-scipy>=1.16.0
+scipy>=1.18.0
 scikit-learn>=1.7.0
 pandas>=2.3.0
 pydantic>=2.12.0
