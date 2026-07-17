@@ -107,3 +107,5 @@ robotreviewer/config.json
 
 
 rct_reviewer/.env
+
+.venv
