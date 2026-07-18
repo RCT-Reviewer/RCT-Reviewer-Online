@@ -16,16 +16,28 @@ This lightweight repository hosts the Streamlit frontend (`app2.py`) which conne
 
 ---
 
-## 📂 Related Repositories
+## 📂 Related Links
 
-*   **Main Repository**: The full source code, local run options, and model weight files are available in the main repository.
-    *   🔗 [aurumz-rgb/RCT-Reviewer](https://github.com/aurumz-rgb/RCT-Reviewer)
-    
-*   **Model Weights (Hugging Face)**: The pre-trained SVM and lexicon models are hosted on the Hugging Face Hub.
-    *   🔗 [Aurumz/RCT-Reviewer](https://huggingface.co/Aurumz/RCT-Reviewer)
+* **Main Website**: Official website for RCT-Reviewer with documentation, features, and project information.
+  * 🔗 https://rct-reviewer.github.io
 
-*   **Original Project**: This project is a modernized, standalone version of the acclaimed RobotReviewer.
-    *   🔗 [ijmarshall/robotreviewer](https://github.com/ijmarshall/robotreviewer)
+* **Main Repository**: The complete source code, local installation, development files, and model integration for RCT-Reviewer.
+  * 🔗 https://github.com/aurumz-rgb/RCT-Reviewer
+
+* **RCT-Reviewer Online Repository**: Source code for the hosted Streamlit web application.
+  * 🔗 https://github.com/RCT-Reviewer/RCT-Reviewer-Online
+
+* **Original Project (RobotReviewer)**: RCT-Reviewer is a modernized, standalone reimplementation inspired by the original RobotReviewer project.
+  * 🔗 https://github.com/ijmarshall/robotreviewer
+
+* **Default Model Weights (Hugging Face)**: Repository containing the default `.joblib` machine learning models used by RCT-Reviewer.
+  * 🔗 https://huggingface.co/Aurumz/RCT-Reviewer
+
+* **Alternative Model Weights (Hugging Face)**: Repository containing legacy `.pickle` and `.pck` model files for compatibility.
+  * 🔗 https://huggingface.co/Aurumz/RCT-Reviewer-pickle
+
+* **RCT-Reviewer Online**: Use the hosted web version of RCT-Reviewer without installing anything locally.
+  * 🔗 https://rct-reviewer.streamlit.app
 
 ---
 
