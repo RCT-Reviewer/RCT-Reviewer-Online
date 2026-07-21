@@ -1393,7 +1393,7 @@ def main():
             dl_col1, dl_col2 = st.columns(2)
 
             with dl_col1:
-                if st.button(" Generate Bias PDF", key=f"bias_pdf_{result['filename']}"):
+                if st.button(" Generate Highlighted Bias PDF", key=f"bias_pdf_{result['filename']}"):
                     fname = result['filename']
                     print(f"[RCT-Reviewer] Generating Bias highlighted PDF for: {fname}...")
                     log.info(f"Generating Bias highlighted PDF for: {fname}...")
@@ -1410,7 +1410,7 @@ def main():
                         st.download_button(" Download Highlighted Bias PDF", bias_pdf, f"bias_{result['filename']}", "application/pdf", key=f"dl_bias_{result['filename']}")
 
             with dl_col2:
-                if st.button(" Generate PICO PDF", key=f"pico_pdf_{result['filename']}"):
+                if st.button(" Generate Highlighted PICO PDF", key=f"pico_pdf_{result['filename']}"):
                     fname = result['filename']
                     print(f"[RCT-Reviewer] Generating PICO highlighted PDF for: {fname}...")
                     log.info(f"Generating PICO highlighted PDF for: {fname}...")
