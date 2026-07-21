@@ -1407,7 +1407,7 @@ def main():
                         print(f"[RCT-Reviewer] ✅ Bias highlighted PDF generated successfully for: {fname}")
                         log.info(f"✅ Bias highlighted PDF generated successfully for: {fname}")
   
-                        st.download_button(" Download Bias PDF", bias_pdf, f"bias_{result['filename']}", "application/pdf", key=f"dl_bias_{result['filename']}")
+                        st.download_button(" Download Highlighted Bias PDF", bias_pdf, f"bias_{result['filename']}", "application/pdf", key=f"dl_bias_{result['filename']}")
 
             with dl_col2:
                 if st.button(" Generate PICO PDF", key=f"pico_pdf_{result['filename']}"):
@@ -1424,7 +1424,7 @@ def main():
                         print(f"[RCT-Reviewer] ✅ PICO highlighted PDF generated successfully for: {fname}")
                         log.info(f"✅ PICO highlighted PDF generated successfully for: {fname}")
                     
-                        st.download_button(" Download PICO PDF", pico_pdf, f"pico_{result['filename']}", "application/pdf", key=f"dl_pico_{result['filename']}")
+                        st.download_button(" Download Highlighted PICO PDF", pico_pdf, f"pico_{result['filename']}", "application/pdf", key=f"dl_pico_{result['filename']}")
 
             dl_col3, dl_col4 = st.columns(2)
 
