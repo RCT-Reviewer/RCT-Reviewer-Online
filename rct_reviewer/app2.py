@@ -631,7 +631,7 @@ def create_bias_highlighted_pdf(pdf_bytes, annotations):
         ("S", "Selective Reporting", BIAS_COLORS["Selective reporting"]),
     ]
 
-    header_note = "Note: For optimal accuracy, use this together with the separately extracted evidence PDFs. Highlighting may not work in some PDFs due to differences in text formatting."
+    header_note = "Note: Highlights show which evidence belongs to each domain only. Refer to the evidence PDFs for the actual Risk of Bias judgment."
 
     for page_num, page in enumerate(doc):
         rect = page.rect
