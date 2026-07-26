@@ -1154,7 +1154,7 @@ def main():
 
         if not success:
             overall_progress.empty()
-            overall_status.error("Model download failed. Please check logs.")
+            overall_status.error("Model download failed. PLEASE RELOAD THE PAGE.")
             st.stop()
 
         overall_status.info("Phase 2/2: Loading ML models from cache into memory...")
