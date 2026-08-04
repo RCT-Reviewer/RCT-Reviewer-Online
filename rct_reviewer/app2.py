@@ -960,7 +960,7 @@ def create_bias_evidence_pdf(bias_results, filename):
 
 
 def create_pico_evidence_pdf(pico_results, filename):
-    """Create a standalone PDF with all PICO evidence sentences, domain-wise and numbered.
+    """Create a standalone PDF with all PIO evidence sentences, domain-wise and numbered.
     Uses insert_textbox for full-width left-to-right text and _clean_text_for_pdf to prevent
     missing characters (e.g. ligature 'fi' showing as dots)."""
     doc = fitz.open()
@@ -984,7 +984,7 @@ def create_pico_evidence_pdf(pico_results, filename):
     except Exception:
         pass
     y += 22
-    page.insert_text(fitz.Point(margin_left, y), _clean_text_for_pdf("Extracted PICO Evidence Sentences"), fontsize=13, color=(0.35, 0.35, 0.35), fontname="helv")
+    page.insert_text(fitz.Point(margin_left, y), _clean_text_for_pdf("Extracted PIO Evidence Sentences"), fontsize=13, color=(0.35, 0.35, 0.35), fontname="helv")
     y += 16
     page.insert_text(fitz.Point(margin_left, y), _clean_text_for_pdf(f"Generated on: {current_date}  |  Source: {filename}"), fontsize=9, color=(0.5, 0.5, 0.5), fontname="helv")
     y += 14
@@ -1250,16 +1250,16 @@ def main():
                     log.info(f"RCT classification complete for: {fname} - Is RCT: {rct_label} (Score: {rct_res['score']:.3f})")
         
 
-                    print(f"[RCT-Reviewer] Running PICO extraction model on: {fname}...")
-                    log.info(f"Running PICO extraction model on: {fname}...")
+                    print(f"[RCT-Reviewer] Running PIO extraction model on: {fname}...")
+                    log.info(f"Running PIO extraction model on: {fname}...")
          
 
-                    progress.progress(0.6, text="Running PICO extraction...")
+                    progress.progress(0.6, text="Running PIO extraction...")
                     pico_res = models['pico'].annotate(parsed_data['sentences'])
 
                     pico_counts = {p['domain']: len(p.get('text', [])) for p in pico_res}
-                    print(f"[RCT-Reviewer] PICO extraction complete for: {fname} - Extracted: {pico_counts}")
-                    log.info(f"PICO extraction complete for: {fname} - Extracted: {pico_counts}")
+                    print(f"[RCT-Reviewer] PIO extraction complete for: {fname} - Extracted: {pico_counts}")
+                    log.info(f"PIO extraction complete for: {fname} - Extracted: {pico_counts}")
            
 
                     print(f"[RCT-Reviewer] Running Risk of Bias assessment model on: {fname}...")
@@ -1372,7 +1372,7 @@ def main():
                 st.caption("_No Risk of Bias assessment could be generated._")
 
             st.markdown("---")
-            st.markdown("###  PICO Extraction")
+            st.markdown("###  PIO Extraction")
             pico = result.get('pico', [])
             pico_icons = {"Population": "P - ", "Intervention": "I - ", "Outcomes": "O - "}
 
@@ -1410,21 +1410,21 @@ def main():
                         st.download_button(" Download Highlighted Bias PDF", bias_pdf, f"bias_{result['filename']}", "application/pdf", key=f"dl_bias_{result['filename']}")
 
             with dl_col2:
-                if st.button(" Generate Highlighted PICO PDF", key=f"pico_pdf_{result['filename']}"):
+                if st.button(" Generate Highlighted PIO PDF", key=f"pico_pdf_{result['filename']}"):
                     fname = result['filename']
-                    print(f"[RCT-Reviewer] Generating PICO highlighted PDF for: {fname}...")
-                    log.info(f"Generating PICO highlighted PDF for: {fname}...")
+                    print(f"[RCT-Reviewer] Generating PIO highlighted PDF for: {fname}...")
+                    log.info(f"Generating PIO highlighted PDF for: {fname}...")
             
-                    with st.spinner("Creating PICO-annotated PDF with highlights & superscripts... Please be patient... Precision takes time..."):
+                    with st.spinner("Creating PIO-annotated PDF with highlights & superscripts... Please be patient... Precision takes time..."):
                         annotations = []
                         for p in result.get('pico', []):
                             for text in p.get('text', []):
                                 annotations.append({"text": text, "type": p['domain']})
                         pico_pdf = create_pico_highlighted_pdf(result['pdf_bytes'], annotations)
-                        print(f"[RCT-Reviewer] ✅ PICO highlighted PDF generated successfully for: {fname}")
-                        log.info(f"✅ PICO highlighted PDF generated successfully for: {fname}")
+                        print(f"[RCT-Reviewer] ✅ PIO highlighted PDF generated successfully for: {fname}")
+                        log.info(f"✅ PIO highlighted PDF generated successfully for: {fname}")
                     
-                        st.download_button(" Download Highlighted PICO PDF", pico_pdf, f"pico_{result['filename']}", "application/pdf", key=f"dl_pico_{result['filename']}")
+                        st.download_button(" Download Highlighted PIO PDF", pico_pdf, f"pico_{result['filename']}", "application/pdf", key=f"dl_pico_{result['filename']}")
 
             dl_col3, dl_col4 = st.columns(2)
 
@@ -1441,16 +1441,16 @@ def main():
                     st.download_button(" Download Bias Evidence", bias_ev_pdf, f"bias_evidence_{result['filename']}", "application/pdf", key=f"dl_bias_ev_{result['filename']}")
 
             with dl_col4:
-                if st.button(" Generate PICO Evidence PDF", key=f"pico_ev_{result['filename']}"):
+                if st.button(" Generate PIO Evidence PDF", key=f"pico_ev_{result['filename']}"):
                     fname = result['filename']
-                    print(f"[RCT-Reviewer] Generating PICO Evidence PDF for: {fname}...")
-                    log.info(f"Generating PICO Evidence PDF for: {fname}...")
+                    print(f"[RCT-Reviewer] Generating PIO Evidence PDF for: {fname}...")
+                    log.info(f"Generating PIO Evidence PDF for: {fname}...")
                    
                     pico_ev_pdf = create_pico_evidence_pdf(result.get('pico', []), result['filename'])
-                    print(f"[RCT-Reviewer] ✅ PICO Evidence PDF generated successfully for: {fname}")
-                    log.info(f"✅ PICO Evidence PDF generated successfully for: {fname}")
+                    print(f"[RCT-Reviewer] ✅ PIO Evidence PDF generated successfully for: {fname}")
+                    log.info(f"✅ PIO Evidence PDF generated successfully for: {fname}")
              
-                    st.download_button(" Download PICO Evidence", pico_ev_pdf, f"pico_evidence_{result['filename']}", "application/pdf", key=f"dl_pico_ev_{result['filename']}")
+                    st.download_button(" Download PIO Evidence", pico_ev_pdf, f"pico_evidence_{result['filename']}", "application/pdf", key=f"dl_pico_ev_{result['filename']}")
 
         exp_col1, exp_col2 = st.columns(2)
 
