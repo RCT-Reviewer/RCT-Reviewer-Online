@@ -328,6 +328,15 @@ BIAS_LETTERS = {
     "Selective reporting": "S",
 }
 
+BIAS_COLORS_LOW = {
+    "Random sequence generation": (0.60, 0.90, 0.60),
+    "Allocation concealment": (0.40, 0.85, 0.40),
+    "Blinding of participants and personnel": (0.50, 0.85, 0.30),
+    "Blinding of outcome assessment": (0.55, 0.80, 0.25),
+    "Incomplete outcome data": (0.45, 0.85, 0.45),
+    "Selective reporting": (0.30, 0.75, 0.30),
+}
+
 
 def _normalize_text(t):
     """Normalize text for PDF search: whitespace, ligatures, dashes, quotes."""
@@ -620,18 +629,20 @@ def create_bias_highlighted_pdf(pdf_bytes, annotations):
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     current_date = datetime.now().strftime("%Y-%m-%d")
 
-    highlight_color = (1.0, 0.9, 0.9)
+    highlight_color = (0.89, 0.93, 0.965)
+
+    domain_judgements = {ann["bias_domain"]: ann.get("judgement", "") for ann in annotations if ann.get("type") == "bias"}
 
     bias_legend_items = [
-        ("R", "Random Sequence Generation", BIAS_COLORS["Random sequence generation"]),
-        ("A", "Allocation Concealment", BIAS_COLORS["Allocation concealment"]),
-        ("B", "Blinding of Participants", BIAS_COLORS["Blinding of participants and personnel"]),
-        ("O", "Blinding of Outcome Assessment", BIAS_COLORS["Blinding of outcome assessment"]),
-        ("I", "Incomplete Outcome Data", BIAS_COLORS["Incomplete outcome data"]),
-        ("S", "Selective Reporting", BIAS_COLORS["Selective reporting"]),
+        ("R", "Random Sequence Generation", BIAS_COLORS_LOW["Random sequence generation"] if domain_judgements.get("Random sequence generation") == "low" else BIAS_COLORS["Random sequence generation"]),
+        ("A", "Allocation Concealment", BIAS_COLORS_LOW["Allocation concealment"] if domain_judgements.get("Allocation concealment") == "low" else BIAS_COLORS["Allocation concealment"]),
+        ("B", "Blinding of Participants", BIAS_COLORS_LOW["Blinding of participants and personnel"] if domain_judgements.get("Blinding of participants and personnel") == "low" else BIAS_COLORS["Blinding of participants and personnel"]),
+        ("O", "Blinding of Outcome Assessment", BIAS_COLORS_LOW["Blinding of outcome assessment"] if domain_judgements.get("Blinding of outcome assessment") == "low" else BIAS_COLORS["Blinding of outcome assessment"]),
+        ("I", "Incomplete Outcome Data", BIAS_COLORS_LOW["Incomplete outcome data"] if domain_judgements.get("Incomplete outcome data") == "low" else BIAS_COLORS["Incomplete outcome data"]),
+        ("S", "Selective Reporting", BIAS_COLORS_LOW["Selective reporting"] if domain_judgements.get("Selective reporting") == "low" else BIAS_COLORS["Selective reporting"]),
     ]
 
-    header_note = "Note: Highlights show which evidence belongs to each domain only. Refer to the evidence PDFs for the actual Risk of Bias judgment."
+    header_note = "Note: For optimal accuracy, use this together with the separately extracted evidence PDFs. Highlighting may not work in some PDFs due to differences in text formatting."
 
     for page_num, page in enumerate(doc):
         rect = page.rect
@@ -686,7 +697,10 @@ def create_bias_highlighted_pdf(pdf_bytes, annotations):
             if not text or not bias_domain:
                 continue
 
-            color = BIAS_COLORS.get(bias_domain, (1.0, 0.3, 0.3))
+            if ann.get("judgement", "") == "low":
+                color = BIAS_COLORS_LOW.get(bias_domain, (0.5, 0.85, 0.5))
+            else:
+                color = BIAS_COLORS.get(bias_domain, (1.0, 0.3, 0.3))
             letter = BIAS_LETTERS.get(bias_domain, "?")
 
             try:
@@ -1402,7 +1416,7 @@ def main():
                         annotations = []
                         for b in result.get('bias', []):
                             for text in b.get('text', []):
-                                annotations.append({"text": text, "type": "bias", "bias_domain": b.get('domain', '')})
+                                annotations.append({"text": text, "type": "bias", "bias_domain": b.get('domain', ''), "judgement": b.get('judgement', '')})
                         bias_pdf = create_bias_highlighted_pdf(result['pdf_bytes'], annotations)
                         print(f"[RCT-Reviewer] ✅ Bias highlighted PDF generated successfully for: {fname}")
                         log.info(f"✅ Bias highlighted PDF generated successfully for: {fname}")
