@@ -3,7 +3,7 @@
 
 
 streamlit==1.55.0
-pymupdf>=1.28.0
+pymupdf>=1.28.2
 spacy>=3.8.14
 numpy>=2.5.1
 scipy>=1.18.0
