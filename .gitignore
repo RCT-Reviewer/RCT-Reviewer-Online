@@ -110,3 +110,13 @@ rct_reviewer/.env
 
 .venv
 .venv/
+
+# Python virtual environment
+.venv/
+
+# Python bytecode cache
+__pycache__/
+*.py[cod]
+
+# Pytest cache
+.pytest_cache/

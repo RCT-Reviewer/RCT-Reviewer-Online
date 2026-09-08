@@ -1115,17 +1115,17 @@ def main():
 
     with st.expander("Validation"):
         st.markdown("""
-        RCT-Reviewer has been independently validated against the original 2017 RobotReviewer implementation using a dedicated **four-tier validation harness**. 
+        RCT-Reviewer has been independently validated against the original 2017 RobotReviewer implementation using a dedicated **five-tier validation harness**. 
 
         * **Predictive validity:** On 751 human-labelled Clinical Hedges records, RCT-Reviewer achieved **91.5% accuracy, 94.1% sensitivity, 88.1% specificity, 0.925 F1 and 0.966 ROC AUC**.
         * **RobotReviewer fidelity:** The refactored RCT classification pipeline reproduces the executed original **bit-identically** - **751/751 records**, with max |Δ| = 0.0.
         * **Risk-of-Bias fidelity:** **100% agreement** with the original across **6,018 document × domain comparisons (κ = 1.0)**, including identical sentence scores and vectorizer outputs.
         * **SVM/CNN ablation:** The SVM-only pipeline achieves **92.5% decision agreement** with the original full SVM+CNN+publication-type ensemble; most of the difference is attributable to the legacy publication-type features.
-        * **PDF robustness:** **1,000/1,000 PDFs** parsed successfully, with a median processing time of 1.66 seconds per PDF.
-        * **External human validation (Tian 2024, n=313 open-access trials):** concordance **60-76%** across the four RoB domains (κ 0.26/0.20/0.48/0.12) - within the range published for the original tool (κ 0.25-0.59, concordance 63-83%).
+        * **PDF robustness:** **1,000/1,000 PDFs** parsed successfully, with a median processing time of 1.57 seconds per PDF.
+        * **External human validation (Tier E, Tian 2024, n=313 open-access trials):** concordance **60–76%** across the four RoB domains (κ 0.26/0.20/0.48/0.12) — within the range published for the original tool (κ 0.25–0.59, concordance 63–83%).
         * **Human-reference control:** on identical PMC text, the original 2017 code agrees with RCT-Reviewer on **100.0%** of domain judgements; external fidelity vs the original's deposited publisher-PDF labels: **78.9%**.
-        * **Tier A detail:** PPV **91.1**, NPV **92.1**, Cohen's κ **0.826**, Brier score 0.067.
-        * **Tier D detail:** **12,060 pages** parsed, success 95% CI 99.6-100.0, max 7.0 s per PDF, parse time scales linearly (Pearson r = 0.93).
+        * **Predictive validity detail:** PPV **91.1**, NPV **92.1**, Cohen's κ **0.826**, Brier score 0.067.
+        * **Parser robustness detail:** **12,060 pages** parsed, success 95% CI 99.6–100.0, max 7.0 s per PDF, parse time scales linearly (Pearson r = 0.93).
 
         The complete methodology, reproducibility data, statistical results and validation outputs are available in the **[RCT-Reviewer Validation repository](https://github.com/RCT-Reviewer/Validation)**. See the **[README](https://github.com/aurumz-rgb/RCT-Reviewer#readme)** for more information.
         """)
@@ -1142,11 +1142,11 @@ def main():
         | **ML Core** | SVM / CNN | Same Weights (SVM prioritized) |
         | **Validated SVM-only vs Full Ensemble** | Full SVM+CNN+publication-type ensemble | 92.5% decision agreement |
         | **Underlying ML Research** | Original ML models trained on 12,808 RCT PDFs | Preserves the same trained ML models and weights |
-        | **Risk of Bias Accuracy** | ~71.0% agreement accuracy vs expert consensus | ~71.0% agreement accuracy vs expert consensus (Same SVM weights) |
+        | **Risk of Bias Accuracy** | ~71.0% agreement accuracy vs expert consensus | Identical SVM weights (verified Tier C); 60–76% human concordance (Tier E) |
         | **Supporting Text Precision** | ~87% precision for rationale extraction | ~87% precision for rationale extraction (Same extraction models) |
         | **Supporting Text Recall** | ~90% recall | ~90% recall (Same extraction models) |
         | **Model Storage** | Pickle / HDF5 / NPZ | Joblib / NPZ / legacy compatibility modes |
-        | **Expected Accuracy Difference After CNN Removal** | Baseline reference | Estimated negligible reduction (~0–2%) |
+        | **Measured Accuracy Difference After CNN Removal** | Baseline reference | F1 drops 0.969 → 0.925 (Tier B) |
         | **Interface** | Flask + React | Streamlit (Pure Python) |
         | **Deployment** | Docker Compose | Local Streamlit Run |
         | **Core Purpose** | Automated Risk of Bias assessment for RCTs | Modernized standalone implementation for automated Risk of Bias assessment |
